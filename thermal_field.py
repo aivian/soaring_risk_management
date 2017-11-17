@@ -1,7 +1,12 @@
 import pdb
 
 import numpy
+import shapely.geometry
+
 import geometry.lines
+
+import hashlib
+import datetime
 
 import matplotlib.pyplot as plt
 
@@ -24,6 +29,9 @@ class Thermal(object):
         self._r = r
         self._w = w
         self._zi = zi
+
+        self._id = hashlib.md5(
+            str((x, r, w, zi, datetime.datetime.now()))).hexdigest()
 
     def w(self, xtest, ztest):
         """Get the updraft value at a location
@@ -70,6 +78,30 @@ class Thermal(object):
         """Get the location
         """
         return self._x
+
+    @property
+    def point(self):
+        """Get the location as a shapely point
+        """
+        return shapely.geometry.point(self._x[0], self._x[1])
+
+    @property
+    def id(self):
+        """Get a unique identifier for the thermal
+        """
+        return self._id
+
+    def estimate_center(self, center_accuracy):
+        """Guess the center point of a thermal from a distance
+
+        Arguments:
+            center_accuracy: the accuracy with which we can estimate where the
+                center is
+
+        Returns:
+            estimated_center: where our best guess of the thermal center is
+        """
+        estimated_center = numpy.random.randn(2) * center_accuracy + self._x
 
 class ConvergenceLine(object):
     """
@@ -238,3 +270,23 @@ class ThermalField(object):
         sorted_thermals = [thermals[idx] for idx in sort_idx]
         therm_idx = [therm_idx[idx] for idx in sort_idx]
         return (to_thermals[sort_idx], sorted_thermals, therm_idx)
+
+    def reachable_thermals(self, amoeba, exclude=None):
+        """Get all thermals within a region which is reachable by an aircraft
+
+        Arguments:
+            amoeba: the glide amoeba, a shapely polygon
+            exclude: exclude these thermal indices
+
+        Returns:
+            thermals: the thermals in no particular order
+            idx: indices of these thermals
+        """
+        thermals = []
+        therm_idx = []
+        for i, thermal in enumerate(self._thermals):
+            if amoeba.contains(thermal.point):
+                thermals.append(thermal)
+                therm_idx.append(i)
+
+        return (thermals, therm_idx)
