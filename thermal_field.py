@@ -71,7 +71,7 @@ class Thermal(object):
         Returns:
             vector: vector from that point to the thermal
         """
-        return self._x - location
+        return (self.X - location) * numpy.array([1.0, 1.0, 0.0])
 
     @property
     def X(self):
@@ -83,13 +83,19 @@ class Thermal(object):
     def point(self):
         """Get the location as a shapely point
         """
-        return shapely.geometry.point(self._x[0], self._x[1])
+        return shapely.geometry.Point(self._x[0], self._x[1])
 
     @property
     def id(self):
         """Get a unique identifier for the thermal
         """
         return self._id
+
+    @property
+    def zmax(self):
+        """Get the thermal max height
+        """
+        return self._zi
 
     def estimate_center(self, center_accuracy):
         """Guess the center point of a thermal from a distance
@@ -101,7 +107,9 @@ class Thermal(object):
         Returns:
             estimated_center: where our best guess of the thermal center is
         """
-        estimated_center = numpy.random.randn(2) * center_accuracy + self._x
+        estimated_center = numpy.random.randn(3) * center_accuracy + self._x
+        estimated_center[2] = 0.0
+        return estimated_center
 
 class ConvergenceLine(object):
     """
@@ -142,7 +150,13 @@ class ConvergenceLine(object):
         return w
 
 class StochasticThermal(Thermal):
-    def __init__(self, x, r, w, zi, P):
+    """A class for a stochastic thermal.
+
+    This is similar to the thermal except that it has some probability of
+    not working. This probability can be specified and it's work / not work
+    property can be evaluated either at initialization or later
+    """
+    def __init__(self, x, r, w, zi, P, realize=True):
         """Constructor
 
         Arguments:
@@ -151,13 +165,34 @@ class StochasticThermal(Thermal):
             w: updraft strength (m/s)
             zi: top (m)
             P: probability that this thermal works
+            realize: optional bool. Realize this thermal (figure out if it works
+                right away, or wait till later)
 
         Returns:
             class instance
         """
-        if numpy.random.rand() > P:
-            w *= 0.0
         super(StochasticThermal, self).__init__(x, r, w, zi)
+        self._P = P
+
+    def realize(self):
+        """Realize this thermal
+
+        determine if it works or not
+
+        Arguments:
+            no arguments
+
+        Returns:
+            no returns
+        """
+        if numpy.random.rand() > P:
+            self._w *= 0.0
+
+    @property
+    def P_work(self):
+        """Get the probability that this thermal works
+        """
+        return self._P
 
 class ThermalField(object):
     def __init__(self, x, zi, sigma_zi, wscale, n, P=None):
@@ -173,7 +208,8 @@ class ThermalField(object):
         """
         self._thermals = []
         while len(self._thermals) < n:
-            candidate_X = numpy.random.rand(2) * x
+            candidate_X = numpy.random.rand(3) * x
+            candidate_X[2] = 0.0
 
             P = 1.0 / (
                 1.0 +
@@ -206,12 +242,12 @@ class ThermalField(object):
     def plot(self, show=True):
         """Plot the thermal field
         """
-        x = numpy.vstack([therm._x for therm in self._thermals])
-        plt.scatter(x[:,0], x[:,1])
+        x = numpy.vstack([therm.X for therm in self._thermals])
+        plt.scatter(x[:,1], x[:,0])
         if show:
             plt.show()
 
-    def get_nearest(self, location, exclude=None):
+    def nearest(self, location, exclude=None):
         """Get the nearest thermal
 
         Arguments:
@@ -235,7 +271,7 @@ class ThermalField(object):
         sub_idx = idx[numpy.argmin(r[include])]
         return (self._thermals[sub_idx], sub_idx)
 
-    def get_thermals_in_range(
+    def thermals_in_range(
         self, location, range_limit, exclude=None):
         """Get all thermals within some distance of a point
 
