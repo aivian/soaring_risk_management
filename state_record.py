@@ -2,6 +2,8 @@ import pdb
 
 import numpy
 
+import copy
+
 import matplotlib.pyplot as plt
 
 class StateRecord(object):
@@ -86,14 +88,14 @@ class StateRecord(object):
         """
         if self._state_dim is None:
             self._time.append(t)
-            self._state_record.append(X)
+            self._state_record.append(copy.deepcopy(X))
             self._input_record.append(U)
             self._idx += 1
             return
 
-        if self._idx > self._state_dim[0]:
+        if self._idx >= self._state_dim[0]:
             self._time_padding.append(t)
-            self._state_padding.append(X)
+            self._state_padding.append(copy.deepcopy(X))
             self._input_padding.append(U)
             self._idx += 1
             return
@@ -135,9 +137,9 @@ class StateRecord(object):
         """
         if self._state_dim is None:
             return numpy.array(self._time)
-        elif self._idx < self._state_dim[0]:
+        elif self._idx <= self._state_dim[0]:
             return self._time[:self._idx]
-        return numpy.hstack(self._time, self._time_padding)
+        return numpy.hstack((self._time, self._time_padding))
 
     @property
     def X(self):
@@ -145,9 +147,9 @@ class StateRecord(object):
         """
         if self._state_dim is None:
             return numpy.array(self._state_record)
-        elif self._idx < self._state_dim[0]:
+        elif self._idx <= self._state_dim[0]:
             return self._state_record[:self._idx]
-        return numpy.hstack(self._state_record, self._state_padding)
+        return numpy.vstack((self._state_record, self._state_padding))
 
     @property
     def U(self):
@@ -155,6 +157,6 @@ class StateRecord(object):
         """
         if self._input_dim is None:
             return numpy.array(self._input_record)
-        elif self._idx < self._state_dim[0]:
+        elif self._idx <= self._state_dim[0]:
             return self._input_record[:self._idx]
-        return numpy.hstack(self._input_record, self._input_padding)
+        return numpy.vstack((self._input_record, self._input_padding))

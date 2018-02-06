@@ -100,7 +100,7 @@ class SailplaneSimulation(simulation.dynamic_system.DynamicSystem):
             self._atmosphere.rho_isa(0.0))
         U_pilot = numpy.array([
             self._atmosphere.g() * numpy.tan(phi),
-            -theta / self._X[4] / numpy.sqrt(sigma)])
+            -numpy.sin(theta) * self._atmosphere.g()])
         U = numpy.hstack((U_pilot, wind))
         self.rk4(U)
         self._state_record.update_state(t, self._X, U)
@@ -178,6 +178,7 @@ class QuadraticPolar(object):
             self.polar[2] +
             Wm -
             MC), 0.0)) / self.polar[0]
+        V_stf = numpy.clip(V_stf, self.min_sink_speed(), numpy.inf)
 
         return V_stf
 

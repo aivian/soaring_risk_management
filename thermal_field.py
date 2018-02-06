@@ -46,9 +46,11 @@ class Thermal(object):
         if ztest > self._zi:
             return 0.0
 
-        R = numpy.linalg.norm(self._x - xtest)
+        R = numpy.linalg.norm(
+            (self._x - xtest) * numpy.array([1.0, 1.0, 0.0]))
         w = numpy.exp(-R / self._r) * self._w
-        w *= (numpy.cos(numpy.pi * ztest / self._zi / 4.0) + 1.0)
+        z_scale = numpy.clip(ztest / self._zi - 1.0, 0.0, numpy.inf)
+        w *= numpy.exp(-z_scale * 4.0)
         return w
 
     def distance(self, location):
@@ -107,9 +109,28 @@ class Thermal(object):
         Returns:
             estimated_center: where our best guess of the thermal center is
         """
-        estimated_center = numpy.random.randn(3) * center_accuracy + self._x
+        estimated_center = numpy.random.rand(3) * center_accuracy + self._x
         estimated_center[2] = 0.0
         return estimated_center
+
+    def working(self, location):
+        """Check if a thermal is working
+
+        Arguments:
+            location: where the aircraft is
+
+        Returns:
+            working: True if the thermal works, False if it doesn't, None if we
+                aren't close enough to tell
+        """
+        # say we can detect a thermal if the updraft is 5% of it's peak...
+        R = numpy.linalg.norm(
+            (self._x - location) * numpy.array([1.0, 1.0, 0.0]))
+        min_distance = -numpy.log(0.05) * self._r
+        if R < min_distance:
+            return self._w > 0
+        else:
+            return None
 
 class ConvergenceLine(object):
     """
@@ -173,6 +194,8 @@ class StochasticThermal(Thermal):
         """
         super(StochasticThermal, self).__init__(x, r, w, zi)
         self._P = P
+        if realize:
+            self.realize()
 
     def realize(self):
         """Realize this thermal
@@ -185,7 +208,7 @@ class StochasticThermal(Thermal):
         Returns:
             no returns
         """
-        if numpy.random.rand() > P:
+        if numpy.random.rand() > self._P:
             self._w *= 0.0
 
     @property
@@ -195,7 +218,7 @@ class StochasticThermal(Thermal):
         return self._P
 
 class ThermalField(object):
-    def __init__(self, x, zi, sigma_zi, wscale, n, P=None):
+    def __init__(self, x, zi, sigma_zi, wscale, n, P_work=None):
         """Constructor
 
         Arguments:
@@ -214,23 +237,44 @@ class ThermalField(object):
             P = 1.0 / (
                 1.0 +
                 numpy.exp(-1.0 * (self.w(candidate_X, zi) - 0.1)))
+
             Ptest = numpy.random.rand()
+
+            inhibit_1 = numpy.array([70.0, 40.0, 0.0]) * 1000.0
+            inhibit_2 = numpy.array([60.0, 60.0, 0.0]) * 1000.0
+            inhibit_3 = numpy.array([65.0, 50.0, 0.0]) * 1000.0
+            inhibit = (inhibit_1, inhibit_2, inhibit_3)
+            inh = []
+            for x_inhibit in inhibit:
+                P_inhibit = 1.0 - numpy.exp(
+                    -numpy.linalg.norm(candidate_X - x_inhibit) / 8.0e3)
+                Ptest *= P_inhibit
             if Ptest > P:
                 r = numpy.clip(
-                    numpy.random.randn() * 100.0 + 250.0, 0.0, numpy.inf)
+                    numpy.random.randn() * 100.0 + 600.0, 500.0, numpy.inf)
                 w = numpy.clip(
                     numpy.random.randn() * 1.0 + wscale, 0.0, numpy.inf)
+                w = wscale
                 zi = numpy.clip(
                     numpy.random.randn() * sigma_zi + zi, 0.0, numpy.inf)
 
                 if w == 0.0 or r == 0.0:
                     continue
-                if P is None:
+                if P_work is None:
                     self._thermals.append(
                         Thermal(candidate_X, r, w, zi))
                 else:
                     self._thermals.append(
-                        StochasticThermal(candidate_X, r, w, zi, P))
+                        StochasticThermal(candidate_X, r, w, zi, P_work))
+
+        self._thermals.append(
+            StochasticThermal(inhibit_1, r, w, zi, P_work))
+        self._thermals.append(
+            StochasticThermal(inhibit_2, r, w, zi, P_work))
+
+        self._thermal_dict = {}
+        for thermal in self._thermals:
+            self._thermal_dict[thermal.id] = thermal
 
     def w(self, location, z):
         w = 0.0
@@ -239,15 +283,18 @@ class ThermalField(object):
 
         return w
 
-    def plot(self, show=True):
+    def plot(self, show=True, save=True):
         """Plot the thermal field
         """
         x = numpy.vstack([therm.X for therm in self._thermals])
         plt.scatter(x[:,1], x[:,0])
+        if save:
+            f = plt.gcf()
+            f.savefig('thermal_field.png', format='png', dpi=1000)
         if show:
             plt.show()
 
-    def nearest(self, location, exclude=None):
+    def nearest(self, location, exclude=[]):
         """Get the nearest thermal
 
         Arguments:
@@ -260,9 +307,13 @@ class ThermalField(object):
         """
         r = numpy.fromiter(
             (t.distance(location) for t in self._thermals), dtype=float)
-        if exclude is None:
-            idx = numpy.argmin(r)
-            return (self._thermals[idx], idx)
+        idx = numpy.argmin(r)
+
+        idx = 0
+        sort_idx = numpy.argsort(r)
+        while self._thermals[sort_idx[idx]].id in exclude:
+            idx += 1
+        return (self._thermals[sort_idx[idx]], sort_idx[idx])
 
         include = numpy.ones((len(self._thermals),), dtype=bool)
         include[exclude] = False
@@ -307,12 +358,12 @@ class ThermalField(object):
         therm_idx = [therm_idx[idx] for idx in sort_idx]
         return (to_thermals[sort_idx], sorted_thermals, therm_idx)
 
-    def reachable_thermals(self, amoeba, exclude=None):
+    def reachable_thermals(self, amoeba, exclude=[]):
         """Get all thermals within a region which is reachable by an aircraft
 
         Arguments:
             amoeba: the glide amoeba, a shapely polygon
-            exclude: exclude these thermal indices
+            exclude: exclude these thermal ids
 
         Returns:
             thermals: the thermals in no particular order
@@ -321,7 +372,7 @@ class ThermalField(object):
         thermals = []
         therm_idx = []
         for i, thermal in enumerate(self._thermals):
-            if amoeba.contains(thermal.point):
+            if amoeba.contains(thermal.point) and thermal.id not in exclude:
                 thermals.append(thermal)
                 therm_idx.append(i)
 

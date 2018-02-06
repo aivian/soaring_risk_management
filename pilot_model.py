@@ -1,10 +1,14 @@
 import pdb
 
-import numpy
+import copy
 
+import numpy
 import scipy
 
 import shapely.geometry
+
+import task as task_module
+import thermal_field as thermal_field_module
 
 import geometry.conversions
 import geodesy.conversions
@@ -25,180 +29,88 @@ class SailplanePilot(object):
         Returns:
             class instance
         """
+        self._navigator = Navigator()
+
         self._aircraft = aircraft
         self._thermal_field = thermal_field
         self._task = task
 
         self._visited_thermals = []
+        self._non_working_thermals = []
         self._plan = []
+        self._planned_thermals = []
 
         self._mc = 0.0
-        self._n_minimum = 1
-        self._P_landout_acceptable = 0.01
+        self._P_err = 1.0
 
-        self._pilot_characteristics = {
-            'thermal_center_sigma': 600.0,
-            'detection_range': 600.0
+        self._characteristics = {
+            'n_minimum': 1,
+            'thermal_center_sigma': 400.0,
+            'detection_range': 700.0,
+            'P_landout_acceptable': 0.2,
+            'final_glide_margin': 0.1,
             }
 
         self._location = numpy.zeros((3,))
-        self._navigator = Navigator()
+        self._vehicle_state = numpy.zeros((5,))
 
         self._state = 'optimize'
 
         self._speed_controllers = {
+            'prestart': self._range_speed,
             'optimize': self._maccready_speed,
             'minimize_risk': self._range_speed,
             'thermal': self._min_sink_speed,
+            'final_glide': self._maccready_speed,
             }
 
-    def update_location(self, new_location, evaluate_state=True):
+    def update_vehicle_state(self, new_state, new_finite_state):
         """Get a new location
 
         Arguments:
-            new_location: numpy (3,) giving xyz position (m)
-            evaluate_state: optional, should we evaluate our state defaults True
+            new_state: numpy array giving vehicle state
+            new_finite_state: the current aircraft state
 
         Returns:
             no returns
         """
-        self._location = new_location
+        self._location = new_state[:3]
+        self._vehicle_state = new_state
+        self._state = new_finite_state
 
-        if evaluate_state:
-            self.evaluate_state()
-
-    def evaluate_state(self):
-        """evaluate which state we're in
-
-        Arguments:
-            no arguments
-
-        Returns:
-            no returns
+    def leaving_thermal(self, thermal_id, working):
+        """Leaving a thermal, remember about it
         """
-        if self._state is 'thermal':
-            # figure out if we should leave
-            if -self._location[-1] > self._current_thermal.zmax * 0.99:
-                self._visited_thermals.append(self._current_thermal.id)
-            else:
-                return
+        if not working and thermal_id not in self._non_working_thermals:
+            self._non_working_thermals.append(thermal_id)
 
-        # we check through the point before end of the plan here because the
-        # last element is the next turnpoint we're going to and it doesn't have
-        # a probability of working...
-        is_risk_tolerance_met = (
-            self.check_plan(self._plan[:-1], self._location)
-            < self._P_landout_acceptable)
-        if is_risk_tolerance_met:
-            self._state = 'optimize'
-        else:
-            self._state = 'minimize_risk'
+        if thermal_id not in self._visited_thermals:
+            self._visited_thermals.append(thermal_id)
 
-        found_thermal, thermal = self.detect_thermal()
-        if not found_thermal:
-            return
-        if thermal.id in self._visited_thermals and self._state is 'optimize':
-            return
-
-        self._state = 'thermal'
-        self._current_thermal = thermal
-
-    def check_plan(self, plan, location):
+    def check_plan(self, plan=None, location=None):
         """
         """
+        if plan is None:
+            plan = self._plan
+        if location is None:
+            location = self._location
+
         if len(plan) == 0:
             return 1.0
 
-        if self._task.glide_ratio_to_next_waypoint(location) < 10.0:
-            return 0.0
+        total_length = 0.0
+        for idx, wp in enumerate(plan):
+            if idx == 0:
+                leg = wp.X - location
+            else:
+                leg = plan[idx-1].X - wp.X
+            total_length += numpy.linalg.norm(
+                leg * numpy.array([1.0, 1.0, 0.0]))
 
         P_work = numpy.fromiter(
-            (thermal.P_work for thermal in plan), dtype=float)
+            (thermal.P_work * self._P_err for thermal in plan), dtype=float)
         P_landout = numpy.prod(1.0 - P_work)
         return P_landout
-
-    def plan_destination(self):
-        """Get a new destination
-
-        Arguments:
-            no arguments
-
-        Returns:
-            new_destination: numpy (3,) array giving xyz position of destination
-            is_risk_tolerance_met: whether risk is as low as desired
-            plan: the plan we're gonna fly (thermals)
-        """
-        next_turnpoint = self._task.next_turnpoint
-
-        wind = numpy.zeros((3,))
-        airspeed = self.select_speed()
-        sink_rate = self._aircraft.sink_rate(airspeed)
-        glide_direction = next_turnpoint.X - self._location
-        glide_direction /= numpy.linalg.norm(
-            glide_direction * numpy.array([1.0, 1.0, 0.0]))
-
-        ground_speed = numpy.linalg.norm(glide_direction * airspeed + wind)
-        glide_range = ground_speed / sink_rate * self._location[2]
-
-        flight_path = numpy.vstack((
-            self._location,
-            self._location + glide_direction * glide_range))
-
-        if self._task.glide_ratio_to_next_waypoint(self._location) < 10.0:
-            plan = [self._task.next_turnpoint,]
-            return (plan[0].X, True, plan)
-
-        #TODO: this needs a better speed thing, probably send it MC so that it
-        # properly speeds up for the upwind legs
-        glide_amoeba = self.glide_amoeba(airspeed)
-
-        reachable_thermals = self._thermal_field.reachable_thermals(
-            glide_amoeba)[0]
-
-        # assign the closest thermal to our course
-        thermals = []
-        P_landout = 1.0
-        zero_3 = numpy.array([1.0, 1.0, 0.0])
-        while (
-            P_landout > self._P_landout_acceptable and
-            len(reachable_thermals) > 0):
-            leg_lengths = numpy.linalg.norm(
-                numpy.diff(flight_path, axis=0), axis=1)
-            idx_to_expand = numpy.argmax(leg_lengths)
-            leg_to_expand = flight_path[idx_to_expand:idx_to_expand + 2]
-            ranges_to_course = numpy.fromiter(
-                (numpy.linalg.norm(geometry.lines.point_line_distance(
-                    thermal.X * zero_3, leg_to_expand * zero_3)[0]) for
-                thermal in reachable_thermals), dtype=float)
-
-            thermals.insert(
-                idx_to_expand,
-                reachable_thermals.pop(numpy.argmin(ranges_to_course)))
-            flight_path = numpy.vstack((
-                flight_path[:idx_to_expand + 1],
-                thermals[idx_to_expand].X,
-                flight_path[idx_to_expand + 1:]))
-            P_landout = self.check_plan(thermals, self._location)
-
-        if len(reachable_thermals) == 0:
-            is_risk_tolerance_met = False
-        else:
-            is_risk_tolerance_met = True
-
-        if len(thermals) == 0 or self._state is 'minimize_risk':
-            next_thermal = self._thermal_field.nearest(self._location)[0]
-        else:
-            # figure out which thermal we're targeting
-            ranges_to_thermals = numpy.fromiter(
-                (numpy.linalg.norm(thermal.X - self._location)
-                    for thermal in thermals), dtype=float)
-            next_thermal = thermals[numpy.argmin(ranges_to_thermals)]
-
-        destination = next_thermal.estimate_center(
-            self._pilot_characteristics['thermal_center_sigma'])
-
-        plan = thermals + [self._task.next_turnpoint]
-        return (destination, is_risk_tolerance_met, plan)
 
     def set_plan(self, plan):
         """Set the plan for where to go
@@ -211,8 +123,12 @@ class SailplanePilot(object):
         """
         if len(plan) > 0:
             self._plan = plan
+            self._planned_thermals = []
+            for wp in self._plan:
+                if isinstance(wp, thermal_field_module.Thermal):
+                    self._planned_thermals.append(wp.id)
 
-    def select_speed(self):
+    def select_speed(self, w, state=None):
         """Figure out what speed to fly
 
         Arguments:
@@ -221,10 +137,12 @@ class SailplanePilot(object):
         Returns:
             v: speed to fly
         """
-        v = self._speed_controllers[self._state]()
-        return v
+        if state is None:
+            return self._speed_controllers[self._state](-w)
+        else:
+            return self._speed_controllers[state](-w)
 
-    def _maccready_speed(self):
+    def _maccready_speed(self, w):
         """Get the MC speed
 
         Arguments:
@@ -233,9 +151,9 @@ class SailplanePilot(object):
         Returns:
             v: speed to fly (m/s)
         """
-        return self._aircraft.speed_to_fly(self._mc)
+        return self._aircraft.speed_to_fly(Wm=w, MC=self._mc)
 
-    def _range_speed(self):
+    def _range_speed(self, w):
         """Choose a speed to maintain connectedness
 
         Arguments:
@@ -244,9 +162,11 @@ class SailplanePilot(object):
         Returns:
             v: speed to fly (m/s)
         """
+        return self._aircraft.speed_to_fly()
+
         n_reachable = 0
         v_candidate = self._maccready_speed()
-        while n_reachable < self._n_minimum:
+        while n_reachable < self._characteristics['n_minimum']:
             # do stuff to figure out how many we can reach
             v_candidate *= 0.99
 
@@ -258,7 +178,7 @@ class SailplanePilot(object):
 
         return v_candidate
 
-    def _min_sink_speed(self):
+    def _min_sink_speed(self, w):
         return self._aircraft.min_sink_speed()
 
     def detect_thermal(self):
@@ -274,12 +194,12 @@ class SailplanePilot(object):
         nearest_thermal = self._thermal_field.nearest(self._location)[0]
         if (
             nearest_thermal.distance(self._location) <
-            self._pilot_characteristics['detection_range']):
+            self._characteristics['detection_range']):
             return (True, nearest_thermal)
 
         return (False, None)
 
-    def glide_amoeba(self, v):
+    def glide_amoeba(self, v=None, vision_range=None):
         """Figure out where we can go
 
         Arguments:
@@ -288,14 +208,18 @@ class SailplanePilot(object):
         Returns:
             amoeba: the amoeba we can get to
         """
+        if v is None:
+            glide_range = vision_range
         wind = numpy.zeros((2,))
         sink_rate = self._aircraft.sink_rate(v)
         reachable_set = []
         candidate_directions = numpy.arange(-numpy.pi, numpy.pi, numpy.pi / 6)
         for psi in candidate_directions:
             direction = numpy.array([numpy.cos(psi), numpy.sin(psi)])
-            ground_speed = numpy.linalg.norm(direction * v + wind)
-            glide_range = ground_speed / sink_rate * self._location[2]
+
+            if v is None:
+                ground_speed = numpy.linalg.norm(direction * v + wind)
+                glide_range = ground_speed / sink_rate * self._location[2]
 
             reachable_set.append(direction * glide_range + self._location[:2])
 
@@ -303,11 +227,218 @@ class SailplanePilot(object):
         amoeba = shapely.geometry.Polygon(reachable_set)
         return amoeba
 
-    @property
-    def state(self):
-        """Get the current state
+    def set_mc(self, mc):
+        """Set the maccready value
         """
-        return self._state
+        self._mc = mc
+
+    @property
+    def vehicle_state(self):
+        """
+        """
+        return self._vehicle_state
+
+    @property
+    def risk_tolerance(self):
+        """
+        """
+        return self._characteristics['P_landout_acceptable']
+
+    @property
+    def thermal_center_accuracy(self):
+        """Get the sigma value for locating a thermal center from afar
+        """
+        return self._characteristics['thermal_center_sigma']
+
+    @property
+    def non_working_thermals(self):
+        """Get the thermals that don't work
+        """
+        return self._non_working_thermals
+
+    @property
+    def visited_thermals(self):
+        """Get the thermals that we've already visited
+        """
+        return self._visited_thermals
+
+    def _navigate_to(self, destination, location):
+        """Send a destination to the navigator
+
+        Arguments:
+            destination: some type of destination either a thermal or a
+                turnpoint
+
+        Returns:
+            no returns
+        """
+        if isinstance(destination, thermal_field_module.Thermal):
+            self._navigator.set_destination(
+                destination.estimate_center(
+                    self._characteristics['thermal_center_sigma']),
+                location)
+            return
+        self._navigator.set_destination(destination.X, location)
+
+    def navigate_plan(self, location):
+        """set the destination from the plan
+        """
+        if len(self._plan) == 0:
+            return
+        if len(self._plan) == 1:
+            self._navigate_to(self._plan[-1], location)
+            return
+
+        # figure out where turnpoints are in our plan, to make sure we don't
+        # skip them...
+        turnpoint_idx = -1
+        idx = 0
+        while idx < len(self._plan) and turnpoint_idx < 0:
+            if isinstance(self._plan[idx], task_module.Turnpoint):
+                turnpoint_idx = idx
+            idx += 1
+
+        if turnpoint_idx == 0:
+            self._navigate_to(self._plan[0], location)
+            return
+        plan = numpy.vstack((wp.X for wp in self._plan[:turnpoint_idx]))
+
+        # Check if we're within the waypoint acceptance distance of any points
+        # if we are, then go to the next waypoint on the flight plan
+        zero_z = numpy.array([1.0, 1.0, 0.0])
+        distance = numpy.fromiter(
+            (numpy.linalg.norm((wp - location) * zero_z) for wp in plan),
+            dtype=float)
+        if numpy.any(distance < self._navigator._acceptance_radius):
+            # This requires that no two waypoints are located less than the
+            # waypoint tolerance apart, or weird things will happen
+            idx = numpy.argmin(distance) + 1
+            # trap when we returned the last waypoint...
+            if idx >= len(plan):
+                idx = len(plan) - 1
+            self._navigate_to(self._plan[idx], location)
+            return
+
+        # Find the closest point on the flight plan
+        r, segment, idx = geometry.lines.point_line_distance(location, plan)
+
+        # the computation returns the index of the beginning of the segment, so
+        # increment it to get the waypoint of interest. Also Capture cases
+        # where the last waypoint was returned (not possible I think, but lets
+        # be safe)
+        idx = idx + 1
+        if idx >= len(plan):
+            idx = len(plan) - 1
+
+        # Check to see if the closest point on the flight plan is the first
+        # waypoint. If it is, then we should go to it.
+        if numpy.linalg.norm((r - plan[0]) * zero_z) < 1.0e-6:
+            self._navigate_to(self._plan[0], location)
+            return
+
+        # Otherwise we just want to go to the end of the nearest segment
+        self._navigate_to(self._plan[idx], location)
+        return
+
+    def thermal(self, new_thermal=None):
+        """Go exploit a thermal
+        """
+        if new_thermal is None:
+            new_thermal = self._current_thermal
+        self._navigator.thermal(new_thermal.X)
+
+    def phi_command(self, wind):
+        """Get bank angle command
+
+        Arguments:
+            wind: numpy (3,) wind vector
+
+        Returns:
+            phi: bank angle command (Rad)
+        """
+        i_V = numpy.array([
+            numpy.cos(self._vehicle_state[3]),
+            numpy.sin(self._vehicle_state[3]),
+            0.0]) * self._vehicle_state[4]
+        inertial_direction = i_V / self._vehicle_state[4]
+        acceleration_command = self._navigator.command(
+            i_V, copy.deepcopy(self._vehicle_state[:3]))
+        acceleration_normal_to_velocity = numpy.cross(
+            numpy.cross(inertial_direction, acceleration_command),
+            inertial_direction)
+        acceleration_body_frame = geometry.rotations.zrot(
+            self._vehicle_state[3]).dot(acceleration_normal_to_velocity)
+        acceleration_body_frame += (
+            geometry.helpers.unit_vector(2) * 9.806)
+        phi_command = numpy.arctan2(
+            acceleration_body_frame[1], acceleration_body_frame[2])
+        phi_command = numpy.clip(phi_command, -numpy.pi / 3.0, numpy.pi / 3.0)
+        return phi_command + numpy.deg2rad(numpy.random.randn() * 2.0)
+
+    def theta_command(self, wind):
+        """get pitch command
+
+        Arguments:
+            wind: numpy (3,) wind vector
+
+        Returns:
+            theta: pitch angle command (rad)
+        """
+        speed_command = self.select_speed(wind[2])
+        speed_rate_command = numpy.clip(
+            (speed_command - self._vehicle_state[4]) / 5.0,
+            -3.0,
+            3.0)
+        theta_command = numpy.clip(
+            numpy.arcsin(
+                -speed_rate_command / environments.earth.constants['g0']),
+            -numpy.pi / 12.0,
+            numpy.pi / 6.0)
+        return theta_command
+
+    def check_thermal(self, thermal):
+        """see if we should use a thermal
+        """
+        working = thermal.working(self._vehicle_state[:3])
+        if thermal.id not in self._non_working_thermals and working:
+            return True
+        elif thermal.id not in self._non_working_thermals and working is False:
+            self._non_working_thermals.append(thermal.id)
+        return working
+
+    def thermal_in_plan(self, thermal):
+        """Check to see if a thermal is in our plan
+        """
+        return thermal.id in self._planned_thermals
+
+    def on_final_glide(self, v=None, location=None):
+        """Check if we can make a final glide
+
+        Arguments:
+            v: optional, the speed to check final glide at. If not specified
+                then we'll just pick up the speed from the normal command
+            location: optional location to check from. If not specified then
+                check from where the aircraft is.
+
+        Returns:
+            on_final_glide: True if the aircraft can make final glide, false if
+                it cannot
+        """
+        legs = self._task.legs_to_finish
+        if location is None:
+            location = self._vehicle_state[:3]
+        legs = numpy.vstack((location, legs)) * numpy.array([1.0, 1.0, 0.0])
+        distance = numpy.sum(numpy.linalg.norm(numpy.diff(legs, axis=0)))
+
+        if v is None:
+            v = self.select_speed(0.0, 'final_glide')
+
+        time_to_go = distance / v
+        time_to_fall = location[2] / self._aircraft.sink_rate(v)
+        glide_factor = 1.0 + self._characteristics['final_glide_margin']
+        if time_to_go * glide_factor < time_to_fall:
+            return True
+        return False
 
 class Navigator(object):
     """A class to handle navigating this sailplane
@@ -321,8 +452,8 @@ class Navigator(object):
         Returns:
             no returns
         """
-        self._L = 200.0
-        self._R = 0.0
+        self._L = 400.0
+        self._R = 200.0
         self._destination = None
         self._thermal_center = None
         self._controller = None
@@ -344,64 +475,6 @@ class Navigator(object):
         self._controller = robot_control.path_following.ParkController(
             numpy.vstack((location, new_destination)), self._L)
 
-    def set_plan(self, new_plan):
-        """Give the navigator a new plan
-
-        Arguments:
-            new_plan: a sequence of thermals to visit
-
-        Returns:
-            no returns
-        """
-        self._plan = numpy.vstack((wp.X for wp in new_plan))
-
-    def destination_from_plan(self, location):
-        """set the destination from the plan
-        """
-        if self._plan.shape[0] == 0:
-            return numpy.zeros((3,))
-        if self._plan.shape[0] == 1:
-            return self._plan[0]
-
-        # Check if we're within the waypoint acceptance distance of any points
-        # if we are, then go to the next waypoint on the flight plan
-        zero_z = numpy.array([1.0, 1.0, 0.0])
-        distance = numpy.fromiter(
-            (numpy.linalg.norm((wp - location) * zero_z) for wp in self._plan),
-            dtype=float)
-        if numpy.any(distance < self._acceptance_radius):
-            # This requires that no two waypoints are located less than the
-            # waypoint tolerance apart, or weird things will happen
-            idx = numpy.argmin(distance) + 1
-            # trap when we returned the last waypoint...
-            if idx >= len(self._plan):
-                idx = len(self._plan) - 1
-            destination = self._plan[idx]
-            return destination
-
-        # Find the closest point on the flight plan
-        r, segment, idx = geometry.lines.point_line_distance(
-            location, self._plan)
-
-        # the computation returns the index of the beginning of the segment, so
-        # increment it to get the waypoint of interest. Also Capture cases
-        # where the last waypoint was returned (not possible I think, but lets
-        # be safe)
-        idx = idx + 1
-        if idx >= len(self._plan):
-            idx = len(self._plan) - 1
-
-        # Check to see if the closest point on the flight plan is the first
-        # waypoint. If it is, then we should go to it.
-        if numpy.linalg.norm((r - self._plan[0]) * zero_z) < 1.0e-6:
-            destination = self._plan[0]
-            return destination
-
-        # Otherwise we just want to go to the end of the nearest segment
-        destination = self._plan[idx]
-        return destination
-
-
     def thermal(self, thermal_location):
         """Tell the navigator to orbit a thermal
 
@@ -414,8 +487,8 @@ class Navigator(object):
         self._destination = None
         self._thermal_center = thermal_location
         self._controller =\
-            robot_control.path_following.CirclingParkContoller(
-                numpy.array(thermal_location, ndmin=2), self._R, self._L)
+            robot_control.path_following.CirclingParkController(
+                numpy.array(thermal_location, ndmin=2), self._R, self._L / 4.0)
 
     def command(self, velocity, location):
         """Generate a steering command
@@ -432,9 +505,20 @@ class Navigator(object):
 
         if self._thermal_center is not None:
             self._controller.R = (
-                numpy.power(numpy.linalg.norm(velocity, 2.0)) /
+                numpy.power(numpy.linalg.norm(velocity), 2.0) /
                 environments.earth.constants['g0'] *
                 numpy.cos(numpy.deg2rad(40.0)))
 
-        self._controller.update_state(location, velocity)
-        return self._controller.command()
+        zero_3 = numpy.array([1.0, 1.0, 0.0])
+        self._controller.update_state(location * zero_3, velocity)
+        return self._controller.command((True, False, True))
+
+    def range_to_thermal(self, location):
+        """
+        """
+        zero_3 = numpy.array([1.0, 1.0, 0.0])
+        to_destination = numpy.linalg.norm(
+            (self._thermal_center - location) * zero_3)
+        return to_destination
+
+
