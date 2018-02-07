@@ -230,6 +230,13 @@ class ThermalField(object):
             P: probability that each thermal works
         """
         self._thermals = []
+        inhibit_1 = numpy.array([70.0, 40.0, 0.0]) * 1000.0
+        inhibit_2 = numpy.array([60.0, 60.0, 0.0]) * 1000.0
+        inhibit_3 = numpy.array([65.0, 50.0, 0.0]) * 1000.0
+        inhibit = (inhibit_1, inhibit_2, inhibit_3)
+        for x_inhibit in inhibit:
+            self._thermals.append(
+                StochasticThermal(x_inhibit, 600, wscale, zi, P_work))
         while len(self._thermals) < n:
             candidate_X = numpy.random.rand(3) * x
             candidate_X[2] = 0.0
@@ -239,15 +246,10 @@ class ThermalField(object):
                 numpy.exp(-1.0 * (self.w(candidate_X, zi) - 0.1)))
 
             Ptest = numpy.random.rand()
-
-            inhibit_1 = numpy.array([70.0, 40.0, 0.0]) * 1000.0
-            inhibit_2 = numpy.array([60.0, 60.0, 0.0]) * 1000.0
-            inhibit_3 = numpy.array([65.0, 50.0, 0.0]) * 1000.0
-            inhibit = (inhibit_1, inhibit_2, inhibit_3)
             inh = []
             for x_inhibit in inhibit:
                 P_inhibit = 1.0 - numpy.exp(
-                    -numpy.linalg.norm(candidate_X - x_inhibit) / 8.0e3)
+                    -numpy.linalg.norm(candidate_X - x_inhibit) / 6.0e3)
                 Ptest *= P_inhibit
             if Ptest > P:
                 r = numpy.clip(
@@ -266,11 +268,6 @@ class ThermalField(object):
                 else:
                     self._thermals.append(
                         StochasticThermal(candidate_X, r, w, zi, P_work))
-
-        self._thermals.append(
-            StochasticThermal(inhibit_1, r, w, zi, P_work))
-        self._thermals.append(
-            StochasticThermal(inhibit_2, r, w, zi, P_work))
 
         self._thermal_dict = {}
         for thermal in self._thermals:

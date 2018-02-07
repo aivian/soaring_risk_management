@@ -47,7 +47,7 @@ class SailplanePilot(object):
             'n_minimum': 1,
             'thermal_center_sigma': 400.0,
             'detection_range': 700.0,
-            'P_landout_acceptable': 0.2,
+            'P_landout_acceptable': 0.1,
             'final_glide_margin': 0.1,
             }
 
@@ -208,8 +208,6 @@ class SailplanePilot(object):
         Returns:
             amoeba: the amoeba we can get to
         """
-        if v is None:
-            glide_range = vision_range
         wind = numpy.zeros((2,))
         sink_rate = self._aircraft.sink_rate(v)
         reachable_set = []
@@ -217,11 +215,15 @@ class SailplanePilot(object):
         for psi in candidate_directions:
             direction = numpy.array([numpy.cos(psi), numpy.sin(psi)])
 
-            if v is None:
-                ground_speed = numpy.linalg.norm(direction * v + wind)
-                glide_range = ground_speed / sink_rate * self._location[2]
+            ground_speed = numpy.linalg.norm(direction * v + wind)
+            glide_range = ground_speed / sink_rate * self._location[2]
 
-            reachable_set.append(direction * glide_range + self._location[:2])
+            if vision_range is not None:
+                reachable_set.append(
+                    direction * vision_range + self._location[:2])
+            else:
+                reachable_set.append(
+                    direction * glide_range + self._location[:2])
 
         reachable_set.append(reachable_set[0])
         amoeba = shapely.geometry.Polygon(reachable_set)

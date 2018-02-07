@@ -28,7 +28,7 @@ if 'field.p' not in os.listdir('.'):
     wscale = 3.0
     n_thermals = 1000
     therm_field = thermal_field.ThermalField(
-        100000.0, zi, 0.0, wscale, n_thermals, 0.7)
+        100000.0, zi, 0.0, wscale, n_thermals, 0.6)
     with open('field.p', 'wb') as pfile:
         cPickle.dump(therm_field, pfile)
     #therm_field.plot()

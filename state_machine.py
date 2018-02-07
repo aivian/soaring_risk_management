@@ -448,7 +448,7 @@ class Optimize(SoaringState):
         #TODO: this needs a better speed thing, probably send it MC so that it
         # properly speeds up for the upwind legs
         vision_range = -50.0 * location[2]
-        glide_amoeba = self._pilot.glide_amoeba(vision_range)
+        glide_amoeba = self._pilot.glide_amoeba(airspeed, vision_range)
         reachable_thermals = self._thermal_field.reachable_thermals(
             glide_amoeba, additional_exclude)[0]
 
