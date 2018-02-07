@@ -101,6 +101,68 @@ def create_pilot_machine(thermal_field, pilot, navigator, aircraft, task):
 
     return pilot_machine
 
+def create_optimize_machine(thermal_field, pilot, navigator, aircraft, task):
+    """
+    """
+    pilot_machine = StateMachine()
+
+    pre_start_state = PreStart(
+        'prestart',
+        thermal_field,
+        pilot,
+        navigator,
+        aircraft,
+        task)
+    pre_start_transitions = {
+        'started': 'optimize',
+        'thermal': 'thermal'}
+
+    optimize_state = Optimize(
+        'optimize',
+        thermal_field,
+        pilot,
+        navigator,
+        aircraft,
+        task)
+    optimize_transitions = {
+        'final_glide': 'final_glide',
+        'minimize_risk': None,
+        'replan': 'optimize',
+        'thermal': 'thermal'}
+
+    thermal_state = Thermal(
+        'thermal',
+        thermal_field,
+        pilot,
+        navigator,
+        aircraft,
+        task)
+    thermal_transitions = {
+        'final_glide': 'final_glide',
+        'optimize': 'optimize'}
+
+    final_glide_state = FinalGlide(
+        'final_glide',
+        thermal_field,
+        pilot,
+        navigator,
+        aircraft,
+        task)
+    final_glide_transitions = {
+        'replan': 'final_glide',
+        'below_glide': 'optimize'}
+
+    pilot_machine.add_state(pre_start_state)
+    pilot_machine.add_transition_map(pre_start_state, pre_start_transitions)
+    pilot_machine.add_state(optimize_state)
+    pilot_machine.add_transition_map(optimize_state, optimize_transitions)
+    pilot_machine.add_state(thermal_state)
+    pilot_machine.add_transition_map(thermal_state, thermal_transitions)
+    pilot_machine.add_state(final_glide_state)
+    pilot_machine.add_transition_map(final_glide_state, final_glide_transitions)
+
+    return pilot_machine
+
 class StateMachine(object):
     """
     """
@@ -210,6 +272,8 @@ class StateMachine(object):
             assert transition in self._transitions[self._current_state],\
                 'transition, {} not an allowed transition for state, {}'.format(
                     transition, self._current_state)
+            if self._transitions[self._current_state][transition] is None:
+                return self._current_state, None
             self._states[self._current_state].exit_actions()
             self._current_state =\
                 self._transitions[self._current_state][transition]
