@@ -155,10 +155,9 @@ for run_idx in range(1):
 
     save_data = {
         'thermal_field': therm_field,
-        'pilot': sailplane_pilot,
         'state_history': state_history,
+        'finite_state_history': sh,
         'task': task,
-        'state_machine': state_machine
         }
 
     saves.append(save_data)
