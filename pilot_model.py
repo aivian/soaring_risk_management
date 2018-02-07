@@ -18,7 +18,7 @@ import robot_control.path_following
 class SailplanePilot(object):
     """A decision-making class
     """
-    def __init__(self, aircraft, thermal_field, task):
+    def __init__(self, aircraft, thermal_field, task, characteristics={}):
         """Constructor
 
         Arguments:
@@ -47,9 +47,12 @@ class SailplanePilot(object):
             'n_minimum': 1,
             'thermal_center_sigma': 400.0,
             'detection_range': 700.0,
-            'P_landout_acceptable': 0.1,
+            'P_landout_acceptable': 0.01,
             'final_glide_margin': 0.1,
             }
+
+        for key, val in characteristics.iteritems():
+            self._characteristics[key] = val
 
         self._location = numpy.zeros((3,))
         self._vehicle_state = numpy.zeros((5,))
