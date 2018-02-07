@@ -12,12 +12,14 @@ import thermal_field
 import pilot_model
 import sailplane
 import state_record
-import task
-import state_machine
+import task as task_module
+import state_machine as state_machine_module
 
 import collections
 
 import matplotlib.pyplot as plt
+
+run_max = 100
 
 debug_plot = False
 
@@ -32,7 +34,6 @@ turnpoints = numpy.array([
     [80.0, 20.0, 0.0],
     [10.0, 20.0, 0.0]]) * 1000.0
 turnpoint_radii = numpy.array([3.0, 0.5, 0.5, 3.0]) * 1000.0
-task = task.AssignedTask(turnpoints, turnpoint_radii)
 total_distance = numpy.sum(
     numpy.linalg.norm(numpy.diff(turnpoints, axis=0), axis=1))
 
@@ -48,7 +49,9 @@ polar = sailplane.QuadraticPolar(polar_poly, 5.0, 100.0, 1.0, 1.0)
 
 saves = []
 
-for run_idx in range(1):
+for run_idx in range(run_max):
+    task = task_module.AssignedTask(turnpoints, turnpoint_radii)
+
     therm_field = thermal_field.ThermalField(
         100000.0, zi, 0.0, wscale, n_thermals, 0.7)
 
@@ -63,7 +66,7 @@ for run_idx in range(1):
     sailplane_pilot = pilot_model.SailplanePilot(polar, therm_field, task)
     sailplane_pilot.set_mc(3.0)
 
-    state_machine = state_machine.create_optimize_machine(
+    state_machine = state_machine_module.create_optimize_machine(
         therm_field,
         sailplane_pilot,
         sailplane_pilot._navigator,
@@ -71,7 +74,7 @@ for run_idx in range(1):
         task)
     state_machine.set_state('prestart')
 
-    i = 1
+    iteration = 0
     done = False
     iter_max = 15e3
 
@@ -83,7 +86,7 @@ for run_idx in range(1):
     tc = [0.0,]
     max_risk = 0.0
     destination = None
-    while not done and i < iter_max and sailplane_sim.state[2] < 0:
+    while not done and iteration < iter_max and sailplane_sim.state[2] < 0:
         done, turnpoint_reached = task.update(sailplane_sim.state[:3])
 
         if done:
@@ -93,12 +96,6 @@ for run_idx in range(1):
             sailplane_sim.state, state_machine.state)
         state, transition = state_machine.execute()
 
-        if last_transition is not None:
-            print('idx: {}, {}, {}, {}'.format(
-                i,
-                last_state,
-                last_transition,
-                sailplane_pilot._navigator._destination))
         last_state = state
         last_transition = transition
 
@@ -120,11 +117,11 @@ for run_idx in range(1):
         sc.append(sailplane_pilot.select_speed(wind[2]))
         tc.append(sailplane_pilot.theta_command(wind))
 
-        i += 1
+        iteration += 1
 
-        if i % 100 == 0:
+        if iteration % 1000 == 0:
             print('iter: {}, N: {:5.0f}, E: {:5.0f}, h: {:4.0f}, P: {:0.3f}'.format(
-                i,
+                iteration,
                 sailplane_sim.state[0],
                 sailplane_sim.state[1],
                 -sailplane_sim.state[2],
@@ -136,97 +133,29 @@ for run_idx in range(1):
         if risk > max_risk:
             max_risk = risk
 
-        if i % 1000 == 0 and False:
-            x = state_history.X
-            plt.scatter(destination[1], destination[0])
-            plt.plot(x[:,1], x[:,0])
-            plt.quiver(
-                x[-1,1], x[-1,0],
-                acceleration_command[1], acceleration_command[0],
-                color='r', linewidth=1)
-            plt.quiver(
-                x[-1,1], x[-1,0],
-                i_V[1], i_V[0],
-                color='b', linewidth=1)
-            plt.axis('equal')
-            plt.show()
-
-    i -= 1
-
     save_data = {
         'thermal_field': therm_field,
         'state_history': state_history,
         'finite_state_history': sh,
         'task': task,
         }
+    print('finished run {}'.format(run_idx))
 
     saves.append(save_data)
 
-with open('save_data.p', 'wb') as pfile:
+with open('save_data_{}.p'.format(run_max), 'wb') as pfile:
     cPickle.dump(saves, pfile)
 
+completed = 0
+failed = 0
+speed = []
+for s in saves:
+    if s['task'].finished:
+        completed += 1
+        distance = s['task'].distance()
+        time = s['state_history'].t[-1]
+        speed.append(distance / time)
+    else:
+        failed += 1
+        speed.append(0.0)
 
-distance = task.progress(sailplane_sim.state[:3])
-print('Task distance: {:3.1f} km'.format(distance / 1000.0))
-if task.finished:
-    print('completed in {:3.1f} minutes'.format(t / 60.0))
-else:
-    print('landed out in {:3.1f} minutes'.format(t / 60.0))
-print('speed: {:3.1f} m/s'.format(distance / t))
-
-cntr = collections.Counter(sh)
-print(cntr)
-
-sh = numpy.array(sh)
-
-def split_indices(condition):
-    """
-    """
-    base_idx = numpy.where(condition)[0]
-    diff = numpy.diff(base_idx)
-    splits = numpy.where(diff > 1)[0]
-    if splits.shape == (0,):
-        return [base_idx,]
-    idx = []
-    last_split = 0
-    for split_idx in splits:
-        idx.append(base_idx[last_split:split_idx])
-        last_split = split_idx + 1
-    idx.append(base_idx[splits[-1] + 1:])
-    return idx
-
-thermal_idx = split_indices(sh == 'thermal')
-minimize_risk_idx = split_indices(sh == 'minimize_risk')
-optimize_idx = split_indices(sh == 'optimize')
-final_glide_idx = split_indices(sh == 'final_glide')
-
-plt.figure()
-ax_baro = plt.axes()
-
-plt.figure()
-plt.plot(state_history.t, sc)
-state_history.plot([4,])
-plt.grid()
-plt.xlabel('time (s)')
-plt.ylabel('speed (m/s)')
-plt.legend(('command', 'flown'))
-
-plt.figure()
-for idx in thermal_idx:
-    plt.plot(
-        state_history.X[idx,1], state_history.X[idx,0], 'b', linewidth=2)
-    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'b')
-for idx in minimize_risk_idx:
-    plt.plot(state_history.X[idx,1], state_history.X[idx,0], 'c', linewidth=2)
-    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'c')
-for idx in optimize_idx:
-    plt.plot(state_history.X[idx,1], state_history.X[idx,0], 'g', linewidth=2)
-    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'g')
-for idx in final_glide_idx:
-    plt.plot(state_history.X[idx,1], state_history.X[idx,0], 'r', linewidth=2)
-    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'r')
-for tp in turnpoints:
-    plt.scatter(tp[1], tp[0], color='r', s=50)
-plt.axis('equal')
-plt.grid()
-therm_field.plot(save=True)

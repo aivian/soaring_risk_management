@@ -234,6 +234,7 @@ class ThermalField(object):
         inhibit_2 = numpy.array([60.0, 60.0, 0.0]) * 1000.0
         inhibit_3 = numpy.array([65.0, 50.0, 0.0]) * 1000.0
         inhibit = (inhibit_1, inhibit_2, inhibit_3)
+        inhibit = []
         for x_inhibit in inhibit:
             self._thermals.append(
                 StochasticThermal(x_inhibit, 600, wscale, zi, P_work))
