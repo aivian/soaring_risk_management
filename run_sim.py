@@ -23,21 +23,6 @@ import matplotlib.pyplot as plt
 
 debug_plot = False
 
-if 'field.p' not in os.listdir('.'):
-    zi = 1000.0
-    wscale = 3.0
-    n_thermals = 1000
-    therm_field = thermal_field.ThermalField(
-        100000.0, zi, 0.0, wscale, n_thermals, 0.6)
-    with open('field.p', 'wb') as pfile:
-        cPickle.dump(therm_field, pfile)
-    #therm_field.plot()
-else:
-    with open('field.p', 'rb') as pfile:
-        therm_field = cPickle.load(pfile)
-
-state_history = state_record.StateRecord((10000, 5), (10000, 5))
-
 turnpoints = numpy.array([
     [10.0, 20.0, 0.0],
     [50.0, 80.0, 0.0],
@@ -58,6 +43,23 @@ polar_poly = numpy.array(
     [-0.0028479077699783985, 0.14645230406133683, -2.5118051525793175])
 polar = sailplane.QuadraticPolar(polar_poly, 5.0, 100.0, 1.0, 1.0)
 
+if 'field.p' not in os.listdir('.'):
+    zi = 1000.0
+    wscale = 3.0
+    n_thermals = 1000
+    therm_field = thermal_field.ThermalField(
+        100000.0, zi, 0.0, wscale, n_thermals, 0.6)
+    with open('field.p', 'wb') as pfile:
+        cPickle.dump(therm_field, pfile)
+    #therm_field.plot()
+else:
+    with open('field.p', 'rb') as pfile:
+        therm_field = cPickle.load(pfile)
+
+therm_field = thermal_field.ThermalField(
+    100000.0, zi, 0.0, wscale, n_thermals, 0.6)
+
+state_history = state_record.StateRecord((10000, 5), (10000, 5))
 sailplane_sim = sailplane.SailplaneSimulation(
     polar,
     aircraft_parameters,
@@ -68,7 +70,8 @@ sailplane_sim = sailplane.SailplaneSimulation(
 sailplane_pilot = pilot_model.SailplanePilot(polar, therm_field, task)
 sailplane_pilot.set_mc(3.0)
 
-state_machine = state_machine.create_pilot_machine(
+#state_machine = state_machine.create_pilot_machine(
+state_machine = state_machine.create_optimize_machine(
     therm_field,
     sailplane_pilot,
     sailplane_pilot._navigator,
@@ -108,17 +111,6 @@ while not done and i < iter_max and sailplane_sim.state[2] < 0:
     last_transition = transition
 
     destination = sailplane_pilot._navigator._destination
-
-    #if not risk_tolerance_met or state_changed or turnpoint_reached:
-    #    destination, risk_met, plan = sailplane_pilot.plan_destination(
-    #        sailplane_pilot._visited_thermals)
-    #    sailplane_pilot.set_plan(plan)
-    #    sailplane_pilot.navigate_plan(sailplane_sim.state[:3])
-
-    #if sailplane_pilot.state != 'thermal':
-    #    sailplane_pilot.navigate_plan(sailplane_sim.state[:3])
-    #else:
-    #    sailplane_pilot.thermal()
 
     X = sailplane_sim.state[:3]
     h = -sailplane_sim.state[2]
