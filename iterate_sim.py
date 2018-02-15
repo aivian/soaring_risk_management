@@ -19,7 +19,7 @@ import collections
 
 import matplotlib.pyplot as plt
 
-run_max = 100
+run_max = 1000
 
 debug_plot = False
 
@@ -37,7 +37,6 @@ turnpoint_radii = numpy.array([3.0, 0.5, 0.5, 3.0]) * 1000.0
 total_distance = numpy.sum(
     numpy.linalg.norm(numpy.diff(turnpoints, axis=0), axis=1))
 
-X0 = numpy.array([10000.0, 10000.0, -1000.0, 0.0, 30.0])
 # N, E, D, psi, v
 
 aircraft_parameters = {'Sref': 1.0, 'mass': 1.0}
@@ -49,12 +48,21 @@ polar = sailplane.QuadraticPolar(polar_poly, 5.0, 100.0, 1.0, 1.0)
 
 saves = []
 
+pilot_characteristics = {
+    'n_minimum': 1,
+    'thermal_center_sigma': 400.0,
+    'detection_range': 700.0,
+    'P_landout_acceptable': 0.1,
+    'final_glide_margin': 0.1,
+    }
+
 for run_idx in range(run_max):
     task = task_module.AssignedTask(turnpoints, turnpoint_radii)
 
     therm_field = thermal_field.ThermalField(
         100000.0, zi, 0.0, wscale, n_thermals, 0.7)
 
+    X0 = numpy.array([10000.0, 10000.0, -1000.0, 0.0, 30.0])
     state_history = state_record.StateRecord((10000, 5), (10000, 5))
     sailplane_sim = sailplane.SailplaneSimulation(
         polar,
@@ -63,10 +71,12 @@ for run_idx in range(run_max):
         state_history,
         sim_params)
 
-    sailplane_pilot = pilot_model.SailplanePilot(polar, therm_field, task)
+    sailplane_pilot = pilot_model.SailplanePilot(
+        polar, therm_field, task, pilot_characteristics)
     sailplane_pilot.set_mc(3.0)
 
-    state_machine = state_machine_module.create_optimize_machine(
+    #state_machine = state_machine_module.create_optimize_machine(
+    state_machine = state_machine_module.create_pilot_machine(
         therm_field,
         sailplane_pilot,
         sailplane_pilot._navigator,
@@ -138,6 +148,7 @@ for run_idx in range(run_max):
         'state_history': state_history,
         'finite_state_history': sh,
         'task': task,
+        'characteristics': pilot_characteristics,
         }
     print('finished run {}'.format(run_idx))
 

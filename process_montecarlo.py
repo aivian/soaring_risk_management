@@ -37,11 +37,12 @@ if __name__ == '__main__':
         else:
             failed += 1
             speed.append(0.0)
+    speed = numpy.array(speed)
 
-    if sys.argv[2] < len(saves):
+    if int(sys.argv[2]) < len(saves):
 
-        plot_save = saves[sys.argv[2]]
-        plot_finite_states = plot_save['finite_state_history']
+        plot_save = saves[int(sys.argv[2])]
+        plot_finite_states = numpy.array(plot_save['finite_state_history'])
         state_history = plot_save['state_history']
 
         def split_indices(condition):
@@ -68,31 +69,43 @@ if __name__ == '__main__':
         plt.figure()
         ax_baro = plt.axes()
 
-        plt.figure()
+        f_map = plt.figure(figsize=(3,3))
         for idx in thermal_idx:
             plt.plot(
-                state_history.X[idx,1], state_history.X[idx,0],
+                state_history.X[idx,1] / 1000.0,
+                state_history.X[idx,0] / 1000.0,
                 'b', linewidth=2, label='thermal')
             ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'b')
         for idx in minimize_risk_idx:
             plt.plot(
-                state_history.X[idx,1], state_history.X[idx,0],
+                state_history.X[idx,1] / 1000.0,
+                state_history.X[idx,0] / 1000.0,
                 'c', linewidth=2, label='minimize_risk')
             ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'c')
         for idx in optimize_idx:
             plt.plot(
-                state_history.X[idx,1], state_history.X[idx,0],
+                state_history.X[idx,1] / 1000.0,
+                state_history.X[idx,0] / 1000.0,
                 'g', linewidth=2, label='optimize')
             ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'g')
         for idx in final_glide_idx:
             plt.plot(
-                state_history.X[idx,1], state_history.X[idx,0],
+                state_history.X[idx,1] / 1000.0,
+                state_history.X[idx,0] / 1000.0,
                 'r', linewidth=2, label='final glide')
             ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'r')
+        turnpoints = [tp.X for tp in plot_save['task']._turnpoints]
         for tp in turnpoints:
-            plt.scatter(tp[1], tp[0], color='r', s=50)
+            plt.scatter(tp[1] / 1000.0, tp[0] / 1000.0, color='r', s=50)
         plt.axis('equal')
         plt.grid()
         plt.xlabel('East (m)')
         plt.ylabel('North (m)')
-        therm_field.plot(save=True)
+        plot_save['thermal_field'].plot(show=False)
+
+    real_bins = numpy.linspace(
+        numpy.amin(speed[speed>0]), numpy.amax(speed[speed>0]), completed/50)
+    bins = numpy.hstack((0.0, 1.0, real_bins))
+    plt.figure()
+    plt.hist(speed, bins, normed=True)
+    plt.show()

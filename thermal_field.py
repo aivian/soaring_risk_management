@@ -285,7 +285,7 @@ class ThermalField(object):
         """Plot the thermal field
         """
         x = numpy.vstack([therm.X for therm in self._thermals])
-        plt.scatter(x[:,1], x[:,0])
+        plt.scatter(x[:,1] / 1000.0, x[:,0] / 1000.0, s=5, edgecolors='none')
         if save:
             f = plt.gcf()
             f.savefig('thermal_field.png', format='png', dpi=1000)
