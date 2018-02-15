@@ -17,9 +17,22 @@ import state_machine
 
 import collections
 
+import matplotlib
 import matplotlib.pyplot as plt
 
 #numpy.random.seed(int(numpy.pi * 100))
+
+save_plot = True
+
+if save_plot:
+    fontsize=8
+    figsize=(3,3)
+else:
+    fontsize=14
+    fitsize=(5,5)
+
+matplotlib.rc('xtick', labelsize=fontsize)
+matplotlib.rc('ytick', labelsize=fontsize)
 
 debug_plot = False
 
@@ -69,6 +82,7 @@ sailplane_pilot = pilot_model.SailplanePilot(polar, therm_field, task)
 sailplane_pilot.set_mc(3.0)
 
 state_machine = state_machine.create_pilot_machine(
+#state_machine = state_machine.create_optimize_machine(
     therm_field,
     sailplane_pilot,
     sailplane_pilot._navigator,
@@ -214,22 +228,47 @@ plt.xlabel('time (s)')
 plt.ylabel('speed (m/s)')
 plt.legend(('command', 'flown'))
 
-plt.figure()
+plt.figure(figsize=(3,3))
 for idx in thermal_idx:
     plt.plot(
-        state_history.X[idx,1], state_history.X[idx,0], 'b', linewidth=2)
+        state_history.X[idx,1] / 1000.0,
+        state_history.X[idx,0] / 1000.0,
+        'b', linewidth=2)
     ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'b')
 for idx in minimize_risk_idx:
-    plt.plot(state_history.X[idx,1], state_history.X[idx,0], 'c', linewidth=2)
+    plt.plot(
+        state_history.X[idx,1] / 1000.0,
+        state_history.X[idx,0] / 1000.0,
+        'c', linewidth=2)
     ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'c')
 for idx in optimize_idx:
-    plt.plot(state_history.X[idx,1], state_history.X[idx,0], 'g', linewidth=2)
+    plt.plot(
+        state_history.X[idx,1] / 1000.0,
+        state_history.X[idx,0] / 1000.0,
+        'g', linewidth=2)
     ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'g')
 for idx in final_glide_idx:
-    plt.plot(state_history.X[idx,1], state_history.X[idx,0], 'r', linewidth=2)
+    plt.plot(
+        state_history.X[idx,1] / 1000.0,
+        state_history.X[idx,0] / 1000.0,
+        'r', linewidth=2)
     ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'r')
 for tp in turnpoints:
-    plt.scatter(tp[1], tp[0], color='r', s=50)
+    plt.scatter(
+        tp[1] / 1000.0, tp[0] / 1000.0, color='r', s=30, edgecolors='none')
 plt.axis('equal')
+plt.xlabel('East (km)', fontsize=fontsize)
+plt.ylabel('North (km)', fontsize=fontsize)
+plt.tight_layout()
 plt.grid()
-therm_field.plot(save=True)
+therm_field.plot(save=save_plot)
+
+save_data = {
+    'thermal_field': therm_field,
+    'state_history': state_history,
+    'finite_state_history': sh,
+    'task': task,
+    }
+
+with open('run_sim_data_4.p', 'wb') as pfile:
+    cPickle.dump(save_data, pfile)
