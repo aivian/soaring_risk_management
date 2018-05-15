@@ -19,14 +19,11 @@ import collections
 
 import matplotlib.pyplot as plt
 
-run_max = 1000
+import hashlib
+
+run_max = 350
 
 debug_plot = False
-
-zi = 1000.0
-wscale = 3.0
-n_thermals = 800
-P_work = 0.7
 
 turnpoints = numpy.array([
     [10.0, 20.0, 0.0],
@@ -48,19 +45,34 @@ polar = sailplane.QuadraticPolar(polar_poly, 5.0, 100.0, 1.0, 1.0)
 
 saves = []
 
+#use [0.005, 0.01, 0.05, 0.1, 0.2] for landout percentages
 pilot_characteristics = {
     'n_minimum': 1,
     'thermal_center_sigma': 400.0,
     'detection_range': 700.0,
-    'P_landout_acceptable': 0.1,
+    'P_landout_acceptable': 0.001,
     'final_glide_margin': 0.1,
+    'gear_shifting': False,
+    }
+environment_characteristics = {
+    'zi': 1000.0,
+    'sigma_zi': 0.0,
+    'wscale': 3.0,
+    'n_thermals': 800,
+    'P_work': 0.7,
+    'area_scale': 100000.0,
     }
 
 for run_idx in range(run_max):
     task = task_module.AssignedTask(turnpoints, turnpoint_radii)
 
     therm_field = thermal_field.ThermalField(
-        100000.0, zi, 0.0, wscale, n_thermals, 0.7)
+        environment_characteristics['area_scale'],
+        environment_characteristics['zi'],
+        environment_characteristics['sigma_zi'],
+        environment_characteristics['wscale'],
+        environment_characteristics['n_thermals'],
+        environment_characteristics['P_work'])
 
     X0 = numpy.array([10000.0, 10000.0, -1000.0, 0.0, 30.0])
     state_history = state_record.StateRecord((10000, 5), (10000, 5))
@@ -75,13 +87,21 @@ for run_idx in range(run_max):
         polar, therm_field, task, pilot_characteristics)
     sailplane_pilot.set_mc(3.0)
 
-    #state_machine = state_machine_module.create_optimize_machine(
-    state_machine = state_machine_module.create_pilot_machine(
-        therm_field,
-        sailplane_pilot,
-        sailplane_pilot._navigator,
-        polar,
-        task)
+    if pilot_characteristics['gear_shifting']:
+        state_machine = state_machine_module.create_pilot_machine(
+            therm_field,
+            sailplane_pilot,
+            sailplane_pilot._navigator,
+            polar,
+            task)
+    else:
+        state_machine = state_machine_module.create_optimize_machine(
+            therm_field,
+            sailplane_pilot,
+            sailplane_pilot._navigator,
+            polar,
+            task)
+
     state_machine.set_state('prestart')
 
     iteration = 0
@@ -148,13 +168,20 @@ for run_idx in range(run_max):
         'state_history': state_history,
         'finite_state_history': sh,
         'task': task,
-        'characteristics': pilot_characteristics,
+        'pilot': pilot_characteristics,
+        'environment': pilot_characteristics,
         }
-    print('finished run {}'.format(run_idx))
+    print('finished run {} of {}'.format(run_idx+1, run_max))
 
     saves.append(save_data)
 
-with open('save_data_{}.p'.format(run_max), 'wb') as pfile:
+id = hashlib.md5(str(saves)).hexdigest()
+if pilot_characteristics['gear_shifting']:
+    shift = 'gear_shift'
+else:
+    shift=''
+save_path = 'MC_runs/save_data_n={}_{}_{}.p'.format(run_max, id, shift)
+with open(save_path, 'wb') as pfile:
     cPickle.dump(saves, pfile)
 
 completed = 0
