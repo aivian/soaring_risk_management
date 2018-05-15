@@ -104,8 +104,17 @@ if __name__ == '__main__':
         plot_save['thermal_field'].plot(show=False)
 
     real_bins = numpy.linspace(
-        numpy.amin(speed[speed>0]), numpy.amax(speed[speed>0]), completed/50)
+        numpy.amin(speed[speed>0]), numpy.amax(speed[speed>0]), 10)
     bins = numpy.hstack((0.0, 1.0, real_bins))
     plt.figure()
     plt.hist(speed, bins, normed=True)
+
+    finish_idx = numpy.where(speed > 0)[0]
+    mean_speed = numpy.mean(speed[finish_idx])
+    landout_percentage = 1.0 - float(len(finish_idx)) / float(len(speed))
+    print('risk: {}, mean_speed: {}, landout_percentage: {}'.format(
+        saves[0]['pilot']['P_landout_acceptable'],
+        mean_speed,
+        landout_percentage))
+
     plt.show()

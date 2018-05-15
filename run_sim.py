@@ -39,7 +39,7 @@ debug_plot = False
 if 'field.p' not in os.listdir('.'):
     zi = 1000.0
     wscale = 3.0
-    n_thermals = 1000
+    n_thermals = 500
     therm_field = thermal_field.ThermalField(
         100000.0, zi, 0.0, wscale, n_thermals, 0.6)
     with open('field.p', 'wb') as pfile:
@@ -81,8 +81,8 @@ sailplane_sim = sailplane.SailplaneSimulation(
 sailplane_pilot = pilot_model.SailplanePilot(polar, therm_field, task)
 sailplane_pilot.set_mc(3.0)
 
-state_machine = state_machine.create_pilot_machine(
-#state_machine = state_machine.create_optimize_machine(
+#state_machine = state_machine.create_pilot_machine(
+state_machine = state_machine.create_optimize_machine(
     therm_field,
     sailplane_pilot,
     sailplane_pilot._navigator,
@@ -270,5 +270,5 @@ save_data = {
     'task': task,
     }
 
-with open('run_sim_data_4.p', 'wb') as pfile:
+with open('run_sim_data_5.p', 'wb') as pfile:
     cPickle.dump(save_data, pfile)

@@ -47,7 +47,7 @@ class SailplanePilot(object):
             'n_minimum': 1,
             'thermal_center_sigma': 400.0,
             'detection_range': 700.0,
-            'P_landout_acceptable': 0.1,
+            'P_landout_acceptable': 0.005,
             'final_glide_margin': 0.1,
             }
 
