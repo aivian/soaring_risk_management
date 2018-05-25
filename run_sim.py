@@ -18,7 +18,7 @@ import state_machine
 import collections
 
 import matplotlib
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 #numpy.random.seed(int(numpy.pi * 100))
 
@@ -168,18 +168,18 @@ while not done and i < iter_max and sailplane_sim.state[2] < 0:
 
     if i % 1000 == 0 and False:
         x = state_history.X
-        plt.scatter(destination[1], destination[0])
-        plt.plot(x[:,1], x[:,0])
-        plt.quiver(
-            x[-1,1], x[-1,0],
-            acceleration_command[1], acceleration_command[0],
-            color='r', linewidth=1)
-        plt.quiver(
-            x[-1,1], x[-1,0],
-            i_V[1], i_V[0],
-            color='b', linewidth=1)
-        plt.axis('equal')
-        plt.show()
+        #plt.scatter(destination[1], destination[0])
+        #plt.plot(x[:,1], x[:,0])
+        #plt.quiver(
+        #    x[-1,1], x[-1,0],
+        #    acceleration_command[1], acceleration_command[0],
+        #    color='r', linewidth=1)
+        #plt.quiver(
+        #    x[-1,1], x[-1,0],
+        #    i_V[1], i_V[0],
+        #    color='b', linewidth=1)
+        #plt.axis('equal')
+        #plt.show()
 
 i -= 1
 
@@ -217,50 +217,50 @@ minimize_risk_idx = split_indices(sh == 'minimize_risk')
 optimize_idx = split_indices(sh == 'optimize')
 final_glide_idx = split_indices(sh == 'final_glide')
 
-plt.figure()
-ax_baro = plt.axes()
-
-plt.figure()
-plt.plot(state_history.t, sc)
-state_history.plot([4,])
-plt.grid()
-plt.xlabel('time (s)')
-plt.ylabel('speed (m/s)')
-plt.legend(('command', 'flown'))
-
-plt.figure(figsize=(3,3))
-for idx in thermal_idx:
-    plt.plot(
-        state_history.X[idx,1] / 1000.0,
-        state_history.X[idx,0] / 1000.0,
-        'b', linewidth=2)
-    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'b')
-for idx in minimize_risk_idx:
-    plt.plot(
-        state_history.X[idx,1] / 1000.0,
-        state_history.X[idx,0] / 1000.0,
-        'c', linewidth=2)
-    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'c')
-for idx in optimize_idx:
-    plt.plot(
-        state_history.X[idx,1] / 1000.0,
-        state_history.X[idx,0] / 1000.0,
-        'g', linewidth=2)
-    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'g')
-for idx in final_glide_idx:
-    plt.plot(
-        state_history.X[idx,1] / 1000.0,
-        state_history.X[idx,0] / 1000.0,
-        'r', linewidth=2)
-    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'r')
-for tp in turnpoints:
-    plt.scatter(
-        tp[1] / 1000.0, tp[0] / 1000.0, color='r', s=30, edgecolors='none')
-plt.axis('equal')
-plt.xlabel('East (km)', fontsize=fontsize)
-plt.ylabel('North (km)', fontsize=fontsize)
-plt.tight_layout()
-plt.grid()
+#plt.figure()
+#ax_baro = plt.axes()
+#
+#plt.figure()
+#plt.plot(state_history.t, sc)
+#state_history.plot([4,])
+#plt.grid()
+#plt.xlabel('time (s)')
+#plt.ylabel('speed (m/s)')
+#plt.legend(('command', 'flown'))
+#
+#plt.figure(figsize=(3,3))
+#for idx in thermal_idx:
+#    plt.plot(
+#        state_history.X[idx,1] / 1000.0,
+#        state_history.X[idx,0] / 1000.0,
+#        'b', linewidth=2)
+#    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'b')
+#for idx in minimize_risk_idx:
+#    plt.plot(
+#        state_history.X[idx,1] / 1000.0,
+#        state_history.X[idx,0] / 1000.0,
+#        'c', linewidth=2)
+#    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'c')
+#for idx in optimize_idx:
+#    plt.plot(
+#        state_history.X[idx,1] / 1000.0,
+#        state_history.X[idx,0] / 1000.0,
+#        'g', linewidth=2)
+#    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'g')
+#for idx in final_glide_idx:
+#    plt.plot(
+#        state_history.X[idx,1] / 1000.0,
+#        state_history.X[idx,0] / 1000.0,
+#        'r', linewidth=2)
+#    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'r')
+#for tp in turnpoints:
+#    plt.scatter(
+#        tp[1] / 1000.0, tp[0] / 1000.0, color='r', s=30, edgecolors='none')
+#plt.axis('equal')
+#plt.xlabel('East (km)', fontsize=fontsize)
+#plt.ylabel('North (km)', fontsize=fontsize)
+#plt.tight_layout()
+#plt.grid()
 therm_field.plot(save=save_plot)
 
 save_data = {

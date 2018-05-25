@@ -4,7 +4,7 @@ import numpy
 
 import copy
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 class StateRecord(object):
     """Holds a record of a state
@@ -117,10 +117,10 @@ class StateRecord(object):
         Returns:
             no returns
         """
-        if axes is None:
-            # haxx0r stuff to let me use the same code. this graps the handle
-            # to the matplotlib library...
-            axes = plt
+        #if axes is None:
+        #    # haxx0r stuff to let me use the same code. this graps the handle
+        #    # to the matplotlib library...
+        #    axes = plt
 
         if plot_slice is None:
             plot_slice = range(self._idx)

@@ -1,6 +1,9 @@
+#!/usr/bin/env python
 import pdb
 import cPickle
 import os
+import sys
+import datetime
 
 import copy
 
@@ -17,11 +20,12 @@ import state_machine as state_machine_module
 
 import collections
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 import hashlib
 
 run_max = 350
+run_id = hashlib.md5(str(datetime.datetime.now())).hexdigest()
 
 debug_plot = False
 
@@ -50,10 +54,11 @@ pilot_characteristics = {
     'n_minimum': 1,
     'thermal_center_sigma': 400.0,
     'detection_range': 700.0,
-    'P_landout_acceptable': 0.001,
+    'P_landout_acceptable': 0.2,
     'final_glide_margin': 0.1,
-    'gear_shifting': False,
+    'gear_shifting': True,
     }
+pilot_characteristics['P_landout_acceptable'] = float(sys.argv[1])
 environment_characteristics = {
     'zi': 1000.0,
     'sigma_zi': 0.0,
@@ -62,6 +67,14 @@ environment_characteristics = {
     'P_work': 0.7,
     'area_scale': 100000.0,
     }
+
+save_path = '/storage/home/jjb481/work/soaring_risk_management/MC_runs/'
+save_path = 'MC_runs/'
+save_path += '{}_n={}'.format(run_id, run_max)
+save_path += '_Pwork={}_Paccept={}_shift={}.p'.format(
+    environment_characteristics['P_work'],
+    pilot_characteristics['P_landout_acceptable'],
+    pilot_characteristics['gear_shifting'])
 
 for run_idx in range(run_max):
     task = task_module.AssignedTask(turnpoints, turnpoint_radii)
@@ -169,18 +182,15 @@ for run_idx in range(run_max):
         'finite_state_history': sh,
         'task': task,
         'pilot': pilot_characteristics,
-        'environment': pilot_characteristics,
+        'environment': environment_characteristics,
         }
     print('finished run {} of {}'.format(run_idx+1, run_max))
-
     saves.append(save_data)
 
-id = hashlib.md5(str(saves)).hexdigest()
-if pilot_characteristics['gear_shifting']:
-    shift = 'gear_shift'
-else:
-    shift=''
-save_path = 'MC_runs/save_data_n={}_{}_{}.p'.format(run_max, id, shift)
+    if (run_idx % 50 == 0) and (run_idx > 0):
+	with open(save_path, 'wb') as pfile:
+	    cPickle.dump(saves, pfile)
+
 with open(save_path, 'wb') as pfile:
     cPickle.dump(saves, pfile)
 

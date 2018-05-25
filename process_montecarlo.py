@@ -6,6 +6,7 @@ import sys
 import copy
 
 import numpy
+import scipy.io
 
 import geometry.rotations
 
@@ -105,7 +106,13 @@ if __name__ == '__main__':
 
     real_bins = numpy.linspace(
         numpy.amin(speed[speed>0]), numpy.amax(speed[speed>0]), 10)
+    real_bins = numpy.linspace(20, 35, 15)
     bins = numpy.hstack((0.0, 1.0, real_bins))
+    mat_data = {}
+    mat_data['bins'] = bins
+    mat_data['speeds'] = speed
+    mat_file = os.path.splitext(sys.argv[1])[0] + '.mat'
+    scipy.io.savemat(mat_file, mat_data)
     plt.figure()
     plt.hist(speed, bins, normed=True)
 
