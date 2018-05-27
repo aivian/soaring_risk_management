@@ -12,6 +12,7 @@ save_files = os.listdir('MC_runs')
 metadata = []
 for mc_file in save_files:
     if re.search('n=350', mc_file) and os.path.splitext(mc_file)[1] == '.p':
+        print('opening: {}'.format(mc_file))
         with open('MC_runs/{}'.format(mc_file), 'rb') as pfile:
             save_data = cPickle.load(pfile)
         this_metadata = (

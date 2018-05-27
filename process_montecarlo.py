@@ -21,6 +21,24 @@ import collections
 
 import matplotlib.pyplot as plt
 
+save_fig = True
+
+def split_indices(condition):
+    """
+    """
+    base_idx = numpy.where(condition)[0]
+    diff = numpy.diff(base_idx)
+    splits = numpy.where(diff > 1)[0]
+    if splits.shape == (0,):
+        return [base_idx,]
+    idx = []
+    last_split = 0
+    for split_idx in splits:
+        idx.append(base_idx[last_split:split_idx])
+        last_split = split_idx + 1
+    idx.append(base_idx[splits[-1] + 1:])
+    return idx
+
 if __name__ == '__main__':
     assert os.path.isfile(sys.argv[1]), 'file {} not found'.format(sys.argv[1])
     with open(sys.argv[1], 'rb') as pfile:
@@ -29,45 +47,60 @@ if __name__ == '__main__':
     completed = 0
     failed = 0
     speed = []
+    n_thermals = []
+    z_range = []
+    v_cruise = []
     for s in saves:
         if s['task'].finished:
             completed += 1
             distance = s['task'].distance()
             time = s['state_history'].t[-1]
             speed.append(distance / time)
+
+            finite_states = numpy.array(s['finite_state_history'])
+            thermal_idx = split_indices(finite_states == 'thermal')
+            optimize_idx = numpy.where(finite_states == 'optimize')[0]
+            n_thermals.append(len(thermal_idx))
+            z_range.append(
+                numpy.amax(s['state_history'].X[:,2]) -
+                numpy.amin(s['state_history'].X[:,2]))
+            v_cruise.append(numpy.mean(
+                s['state_history'].X[optimize_idx,4]))
         else:
             failed += 1
             speed.append(0.0)
+
+    polar_poly = numpy.array([
+        -0.0028479077699783985,
+        0.14645230406133683,
+        -2.5118051525793175])
     speed = numpy.array(speed)
+    n_thermals = numpy.array(n_thermals)
+    z_range = numpy.array(z_range)
+    v_cruise = numpy.array(v_cruise)
+    percolation_parameter = (
+        n_thermals /
+        distance *
+        2.0 *
+        1000.0 *
+        - v_cruise / numpy.polyval(polar_poly, v_cruise))
 
-    if int(sys.argv[2]) < len(saves):
+    if len(sys.argv) < 3:
+        plot_run_idx = int(numpy.random.rand() * len(saves))
+    else:
+        plot_run_idx = sys.argv[2]
+    if plot_run_idx < len(saves):
 
-        plot_save = saves[int(sys.argv[2])]
+        plot_save = saves[plot_run_idx]
         plot_finite_states = numpy.array(plot_save['finite_state_history'])
         state_history = plot_save['state_history']
-
-        def split_indices(condition):
-            """
-            """
-            base_idx = numpy.where(condition)[0]
-            diff = numpy.diff(base_idx)
-            splits = numpy.where(diff > 1)[0]
-            if splits.shape == (0,):
-                return [base_idx,]
-            idx = []
-            last_split = 0
-            for split_idx in splits:
-                idx.append(base_idx[last_split:split_idx])
-                last_split = split_idx + 1
-            idx.append(base_idx[splits[-1] + 1:])
-            return idx
 
         thermal_idx = split_indices(plot_finite_states == 'thermal')
         minimize_risk_idx = split_indices(plot_finite_states == 'minimize_risk')
         optimize_idx = split_indices(plot_finite_states == 'optimize')
         final_glide_idx = split_indices(plot_finite_states == 'final_glide')
 
-        plt.figure()
+        f_barogram= plt.figure(figsize=(4,3))
         ax_baro = plt.axes()
 
         f_map = plt.figure(figsize=(3,3))
@@ -76,32 +109,48 @@ if __name__ == '__main__':
                 state_history.X[idx,1] / 1000.0,
                 state_history.X[idx,0] / 1000.0,
                 'b', linewidth=2, label='thermal')
-            ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'b')
+            ax_baro.plot(
+                state_history.t[idx],
+                -state_history.X[idx, 2],
+                'b', linewidth=2, label='thermal')
         for idx in minimize_risk_idx:
             plt.plot(
                 state_history.X[idx,1] / 1000.0,
                 state_history.X[idx,0] / 1000.0,
-                'c', linewidth=2, label='minimize_risk')
-            ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'c')
+                'c', linewidth=2, label='minimize risk')
+            ax_baro.plot(
+                state_history.t[idx],
+                -state_history.X[idx, 2],
+                'c', linewidth=2, label='minimize risk')
         for idx in optimize_idx:
             plt.plot(
                 state_history.X[idx,1] / 1000.0,
                 state_history.X[idx,0] / 1000.0,
                 'g', linewidth=2, label='optimize')
-            ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'g')
+            ax_baro.plot(
+                state_history.t[idx],
+                -state_history.X[idx, 2],
+                'g', label='optimize')
         for idx in final_glide_idx:
             plt.plot(
                 state_history.X[idx,1] / 1000.0,
                 state_history.X[idx,0] / 1000.0,
                 'r', linewidth=2, label='final glide')
-            ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'r')
+            ax_baro.plot(
+                state_history.t[idx],
+                -state_history.X[idx, 2],
+                'r', label='final glide')
         turnpoints = [tp.X for tp in plot_save['task']._turnpoints]
         for tp in turnpoints:
             plt.scatter(tp[1] / 1000.0, tp[0] / 1000.0, color='r', s=50)
         plt.axis('equal')
         plt.grid()
-        plt.xlabel('East (m)')
-        plt.ylabel('North (m)')
+        plt.xlabel('east (m)')
+        plt.ylabel('north (m)')
+        ax_baro.set_xlabel('time (s)')
+        ax_baro.set_ylabel('altitude (m)')
+        f_map.tight_layout()
+        f_barogram.tight_layout()
         plot_save['thermal_field'].plot(show=False)
 
     real_bins = numpy.linspace(
@@ -124,4 +173,17 @@ if __name__ == '__main__':
         mean_speed,
         landout_percentage))
 
-    plt.show()
+    if save_fig:
+        P_work= s['thermal_field']._thermals[0].P_work
+        risk = s['pilot']['P_landout_acceptable']
+        shift = s['pilot']['gear_shifting']
+        info_name = 'P_thermal={}-risk={}-shift={}'.format(
+            P_work, risk, shift)
+        f_barogram.savefig(
+            'figures/sample_barogram-{}.png'.format(info_name),
+            format='png')
+        f_map.savefig(
+            'figures/sample_flight_path-{}.png'.format(info_name),
+            format='png')
+    else:
+        plt.show()
