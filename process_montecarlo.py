@@ -19,9 +19,14 @@ import state_machine as state_machine_module
 
 import collections
 
-import matplotlib.pyplot as plt
+save_fig = False
 
-save_fig = True
+import matplotlib
+fontsize = 8
+import matplotlib.pyplot as plt
+matplotlib.rc('xtick', labelsize=fontsize)
+matplotlib.rc('ytick', labelsize=fontsize)
+import matplotlib.pyplot as plt
 
 def split_indices(condition):
     """
@@ -42,15 +47,19 @@ def split_indices(condition):
 if __name__ == '__main__':
     assert os.path.isfile(sys.argv[1]), 'file {} not found'.format(sys.argv[1])
     with open(sys.argv[1], 'rb') as pfile:
+        print('opening: {}'.format(sys.argv[1]))
         saves = cPickle.load(pfile)
 
     completed = 0
     failed = 0
-    speed = []
     n_thermals = []
+    speed = []
     z_range = []
     v_cruise = []
     for s in saves:
+        thermals = []
+        thermal_ids = []
+        finite_states = numpy.array(s['finite_state_history'])
         if s['task'].finished:
             completed += 1
             distance = s['task'].distance()
@@ -59,16 +68,27 @@ if __name__ == '__main__':
 
             finite_states = numpy.array(s['finite_state_history'])
             thermal_idx = split_indices(finite_states == 'thermal')
-            optimize_idx = numpy.where(finite_states == 'optimize')[0]
-            n_thermals.append(len(thermal_idx))
             z_range.append(
                 numpy.amax(s['state_history'].X[:,2]) -
                 numpy.amin(s['state_history'].X[:,2]))
-            v_cruise.append(numpy.mean(
-                s['state_history'].X[optimize_idx,4]))
         else:
             failed += 1
             speed.append(0.0)
+
+        optimize_idx = numpy.where(finite_states == 'optimize')[0]
+        v_cruise.append(numpy.mean(
+            s['state_history'].X[optimize_idx,4]))
+
+        for thermal in s['thermal_field']._thermals:
+            if thermal._w < 0.01:
+                continue
+            distances = numpy.linalg.norm(
+                (thermal._x - s['state_history'].X[:,:3]) *
+                numpy.array([1.0, 1.0, 0.0]), axis=1)
+            if numpy.amin(distances) < 700:
+                thermals.append(thermal)
+                thermal_ids.append(thermal.id)
+        n_thermals.append(len(thermals))
 
     polar_poly = numpy.array([
         -0.0028479077699783985,
@@ -78,12 +98,10 @@ if __name__ == '__main__':
     n_thermals = numpy.array(n_thermals)
     z_range = numpy.array(z_range)
     v_cruise = numpy.array(v_cruise)
-    percolation_parameter = (
-        n_thermals /
-        distance *
-        2.0 *
-        1000.0 *
-        - v_cruise / numpy.polyval(polar_poly, v_cruise))
+    LD = - v_cruise / numpy.polyval(polar_poly, v_cruise)
+    density_1d = n_thermals / distance
+    density_2d = density_1d * 2.0 / numpy.pi / 1000.0 / LD
+    percolation_degree = density_2d * numpy.pi * numpy.power(1000.0 * LD, 2.0)
 
     if len(sys.argv) < 3:
         plot_run_idx = int(numpy.random.rand() * len(saves))
@@ -100,10 +118,11 @@ if __name__ == '__main__':
         optimize_idx = split_indices(plot_finite_states == 'optimize')
         final_glide_idx = split_indices(plot_finite_states == 'final_glide')
 
-        f_barogram= plt.figure(figsize=(4,3))
+        f_barogram = plt.figure(figsize=(3,2.5), dpi=400)
         ax_baro = plt.axes()
+        ax_baro.grid()
 
-        f_map = plt.figure(figsize=(3,3))
+        f_map = plt.figure(figsize=(3,3), dpi=400)
         for idx in thermal_idx:
             plt.plot(
                 state_history.X[idx,1] / 1000.0,
@@ -145,10 +164,10 @@ if __name__ == '__main__':
             plt.scatter(tp[1] / 1000.0, tp[0] / 1000.0, color='r', s=50)
         plt.axis('equal')
         plt.grid()
-        plt.xlabel('east (m)')
-        plt.ylabel('north (m)')
-        ax_baro.set_xlabel('time (s)')
-        ax_baro.set_ylabel('altitude (m)')
+        plt.xlabel('east (m)', size=fontsize)
+        plt.ylabel('north (m)', size=fontsize)
+        ax_baro.set_xlabel('time (s)', size=fontsize)
+        ax_baro.set_ylabel('altitude (m)', size=fontsize)
         f_map.tight_layout()
         f_barogram.tight_layout()
         plot_save['thermal_field'].plot(show=False)
@@ -160,6 +179,9 @@ if __name__ == '__main__':
     mat_data = {}
     mat_data['bins'] = bins
     mat_data['speeds'] = speed
+    mat_data['density_1d'] = density_1d
+    mat_data['density_2d'] = density_2d
+    mat_data['percolation_degree'] = percolation_degree
     mat_file = os.path.splitext(sys.argv[1])[0] + '.mat'
     scipy.io.savemat(mat_file, mat_data)
     plt.figure()
@@ -179,11 +201,14 @@ if __name__ == '__main__':
         shift = s['pilot']['gear_shifting']
         info_name = 'P_thermal={}-risk={}-shift={}'.format(
             P_work, risk, shift)
+        info_name = info_name.replace('=', '_')
+        info_name = info_name.replace('.', '_')
         f_barogram.savefig(
             'figures/sample_barogram-{}.png'.format(info_name),
             format='png')
         f_map.savefig(
             'figures/sample_flight_path-{}.png'.format(info_name),
             format='png')
-    else:
-        plt.show()
+        print('saving: {}'.format(info_name))
+    #else:
+        #plt.show()

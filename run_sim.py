@@ -18,7 +18,7 @@ import state_machine
 import collections
 
 import matplotlib
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 
 #numpy.random.seed(int(numpy.pi * 100))
 
@@ -36,17 +36,36 @@ matplotlib.rc('ytick', labelsize=fontsize)
 
 debug_plot = False
 
-if 'field.p' not in os.listdir('.'):
-    zi = 1000.0
-    wscale = 3.0
-    n_thermals = 500
+pilot_characteristics = {
+    'n_minimum': 1,
+    'thermal_center_sigma': 400.0,
+    'detection_range': 700.0,
+    'P_landout_acceptable': 0.01,
+    'final_glide_margin': 0.1,
+    'gear_shifting': False
+    }
+environment_characteristics = {
+    'zi': 1000.0,
+    'sigma_zi': 0.0,
+    'wscale': 3.0,
+    'n_thermals': 800,
+    'P_work': 0.4,
+    'area_scale': 100000.0,
+    }
+
+if 'field2.p' not in os.listdir('.'):
     therm_field = thermal_field.ThermalField(
-        100000.0, zi, 0.0, wscale, n_thermals, 0.6)
-    with open('field.p', 'wb') as pfile:
+        environment_characteristics['area_scale'],
+        environment_characteristics['zi'],
+        environment_characteristics['sigma_zi'],
+        environment_characteristics['wscale'],
+        environment_characteristics['n_thermals'],
+        environment_characteristics['P_work'])
+    with open('field2.p', 'wb') as pfile:
         cPickle.dump(therm_field, pfile)
     #therm_field.plot()
 else:
-    with open('field.p', 'rb') as pfile:
+    with open('field2.p', 'rb') as pfile:
         therm_field = cPickle.load(pfile)
 
 state_history = state_record.StateRecord((10000, 5), (10000, 5))
@@ -78,16 +97,24 @@ sailplane_sim = sailplane.SailplaneSimulation(
     state_history,
     sim_params)
 
-sailplane_pilot = pilot_model.SailplanePilot(polar, therm_field, task)
+sailplane_pilot = pilot_model.SailplanePilot(
+    polar, therm_field, task, pilot_characteristics)
 sailplane_pilot.set_mc(3.0)
 
-#state_machine = state_machine.create_pilot_machine(
-state_machine = state_machine.create_optimize_machine(
-    therm_field,
-    sailplane_pilot,
-    sailplane_pilot._navigator,
-    polar,
-    task)
+if pilot_characteristics['gear_shifting']:
+    state_machine = state_machine.create_pilot_machine(
+        therm_field,
+        sailplane_pilot,
+        sailplane_pilot._navigator,
+        polar,
+        task)
+else:
+    state_machine = state_machine.create_optimize_machine(
+        therm_field,
+        sailplane_pilot,
+        sailplane_pilot._navigator,
+        polar,
+        task)
 state_machine.set_state('prestart')
 
 i = 1
@@ -217,58 +244,64 @@ minimize_risk_idx = split_indices(sh == 'minimize_risk')
 optimize_idx = split_indices(sh == 'optimize')
 final_glide_idx = split_indices(sh == 'final_glide')
 
-#plt.figure()
-#ax_baro = plt.axes()
-#
-#plt.figure()
-#plt.plot(state_history.t, sc)
-#state_history.plot([4,])
-#plt.grid()
-#plt.xlabel('time (s)')
-#plt.ylabel('speed (m/s)')
-#plt.legend(('command', 'flown'))
-#
-#plt.figure(figsize=(3,3))
-#for idx in thermal_idx:
-#    plt.plot(
-#        state_history.X[idx,1] / 1000.0,
-#        state_history.X[idx,0] / 1000.0,
-#        'b', linewidth=2)
-#    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'b')
-#for idx in minimize_risk_idx:
-#    plt.plot(
-#        state_history.X[idx,1] / 1000.0,
-#        state_history.X[idx,0] / 1000.0,
-#        'c', linewidth=2)
-#    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'c')
-#for idx in optimize_idx:
-#    plt.plot(
-#        state_history.X[idx,1] / 1000.0,
-#        state_history.X[idx,0] / 1000.0,
-#        'g', linewidth=2)
-#    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'g')
-#for idx in final_glide_idx:
-#    plt.plot(
-#        state_history.X[idx,1] / 1000.0,
-#        state_history.X[idx,0] / 1000.0,
-#        'r', linewidth=2)
-#    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'r')
-#for tp in turnpoints:
-#    plt.scatter(
-#        tp[1] / 1000.0, tp[0] / 1000.0, color='r', s=30, edgecolors='none')
-#plt.axis('equal')
-#plt.xlabel('East (km)', fontsize=fontsize)
-#plt.ylabel('North (km)', fontsize=fontsize)
-#plt.tight_layout()
-#plt.grid()
-therm_field.plot(save=save_plot)
-
 save_data = {
     'thermal_field': therm_field,
     'state_history': state_history,
     'finite_state_history': sh,
     'task': task,
     }
-
-with open('run_sim_data_5.p', 'wb') as pfile:
+save_name = 'run_sim_data_P={}_shift={}_Pwork={}.p'.format(
+    pilot_characteristics['P_landout_acceptable'],
+    pilot_characteristics['gear_shifting'],
+    environment_characteristics['P_work'])
+with open(save_name, 'wb') as pfile:
     cPickle.dump(save_data, pfile)
+
+print(a)
+
+plt.figure()
+ax_baro = plt.axes()
+
+plt.figure()
+plt.plot(state_history.t, sc)
+state_history.plot([4,])
+plt.grid()
+plt.xlabel('time (s)')
+plt.ylabel('speed (m/s)')
+plt.legend(('command', 'flown'))
+
+plt.figure(figsize=(3,3))
+for idx in thermal_idx:
+    plt.plot(
+        state_history.X[idx,1] / 1000.0,
+        state_history.X[idx,0] / 1000.0,
+        'b', linewidth=2)
+    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'b')
+for idx in minimize_risk_idx:
+    plt.plot(
+        state_history.X[idx,1] / 1000.0,
+        state_history.X[idx,0] / 1000.0,
+        'c', linewidth=2)
+    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'c')
+for idx in optimize_idx:
+    plt.plot(
+        state_history.X[idx,1] / 1000.0,
+        state_history.X[idx,0] / 1000.0,
+        'g', linewidth=2)
+    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'g')
+for idx in final_glide_idx:
+    plt.plot(
+        state_history.X[idx,1] / 1000.0,
+        state_history.X[idx,0] / 1000.0,
+        'r', linewidth=2)
+    ax_baro.plot(state_history.t[idx], -state_history.X[idx, 2], 'r')
+for tp in turnpoints:
+    plt.scatter(
+        tp[1] / 1000.0, tp[0] / 1000.0, color='r', s=30, edgecolors='none')
+plt.axis('equal')
+plt.xlabel('East (km)', fontsize=fontsize)
+plt.ylabel('North (km)', fontsize=fontsize)
+plt.tight_layout()
+plt.grid()
+therm_field.plot(save=save_plot)
+
