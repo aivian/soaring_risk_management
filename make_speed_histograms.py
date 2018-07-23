@@ -5,6 +5,7 @@ import os
 import cPickle
 
 save_fig = True
+plot_fig = False
 
 import matplotlib
 fontsize = 8
@@ -20,7 +21,7 @@ mps = r'$(\mathrm{ms^{-1}})$'
 kmh = r'$(\mathrm{kmh^{-1}})$'
 
 P_work=0.7
-shift=True
+shift=False
 
 if len(sys.argv) == 3:
     P_work = float(sys.argv[1])
@@ -182,6 +183,7 @@ f_landout = plt.figure(figsize=(3,2), dpi=400)
 plt.semilogx(PP, hist_speeds[:,0])
 plt.xlabel(r'$P_{tol}$')
 plt.ylabel(r'$P_{landout}$')
+plt.xticks([0.001, 0.01, 0.1], ['0.001', '0.01', '0.1'])
 plt.grid()
 if shift:
     plt.yticks(numpy.arange(0.0, 0.06, 0.01))
@@ -208,4 +210,5 @@ if save_fig:
     f_landout.savefig('figures/P_landout-{}.png'.format(info_name), format='png')
     f_spacing.savefig(
         'figures/thermal_intensity-{}.png'.format(info_name), format='png')
+if plot_fig:
     plt.show()
