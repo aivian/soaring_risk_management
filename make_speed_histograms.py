@@ -2,7 +2,7 @@
 import pdb
 import sys
 import os
-import cPickle
+import pickle
 
 save_fig = True
 plot_fig = False
@@ -17,8 +17,8 @@ import numpy
 
 import scipy.io
 
-mps = r'$(\mathrm{ms^{-1}})$'
-kmh = r'$(\mathrm{kmh^{-1}})$'
+mps = r'$(\mathrm{m\ s^{-1}})$'
+kmh = r'$(\mathrm{km\ h^{-1}})$'
 
 P_work=0.7
 shift=False
@@ -66,7 +66,7 @@ speeds = []
 percolate_degree = []
 density = []
 PP = []
-for P, run in runs.iteritems():
+for P, run in runs.items():
     print('opening: {}'.format(run))
     matpath = 'MC_runs/{}.mat'.format(run)
     ppath = 'MC_runs/{}.p'.format(run)
@@ -77,7 +77,7 @@ for P, run in runs.iteritems():
         density.append(hist_data['density_1d'])
     else:
         with open(ppath, 'rb') as pfile:
-            saves = cPickle.load(pfile)
+            saves = pickle.load(pfile)
         ispeeds = []
         ipercolate = []
         for s in saves:
@@ -118,7 +118,7 @@ mean_speeds = []
 n = speeds.shape[0]
 f_bar = plt.figure(figsize=(4,3), dpi=400)
 for idx, speed in enumerate(speeds):
-    hist_speeds.append(numpy.histogram(speed, bins, normed=True)[0])
+    hist_speeds.append(numpy.histogram(speed, bins, density=True)[0])
     mean_speeds.append(numpy.mean(speed[speed > 0]))
     #plt.plot(bins[1:], hist_speeds[-1])
     widths = numpy.diff(bins) / (n+1)
@@ -130,14 +130,14 @@ hist_spacing = []
 mean_spacing = []
 for idx, spacing in enumerate(thermal_spacing):
     hist_spacing.append(
-        numpy.histogram(spacing, spacing_bins, normed=True)[0])
+        numpy.histogram(spacing, spacing_bins, density=True)[0])
     mean_spacing.append(numpy.mean(spacing))
     spacing_widths = numpy.diff(spacing_bins) / (n + 1)
     spacing_start = (
         spacing_bins[:-1] + spacing_widths * idx + spacing_widths / 2.0)
     spacingbin = spacing_bins[:-1] + numpy.diff(spacing_bins) / 2.0
 
-#plt.hist(speeds, bins, normed=True)
+#plt.hist(speeds, bins, density=True)
 plt.ylim([0, 0.4])
 plt.grid()
 plt.legend([r'$P_{tol}$' + '={}'.format(p) for p in PP])
@@ -205,10 +205,14 @@ if save_fig:
     info_name = 'P_thermal={}-shift={}'.format(P_work, shift)
     info_name = info_name.replace('=', '_')
     info_name = info_name.replace('.', '_')
-    f_bar.savefig('figures/hist_bar-{}.png'.format(info_name), format='png')
-    f_line.savefig('figures/hist_line-{}.png'.format(info_name), format='png')
-    f_landout.savefig('figures/P_landout-{}.png'.format(info_name), format='png')
+    f_bar.savefig(
+        'figures/hist_bar-{}.png'.format(info_name), format='png', dpi=300)
+    f_line.savefig(
+        'figures/hist_line-{}.png'.format(info_name), format='png', dpi=300)
+    f_landout.savefig(
+        'figures/P_landout-{}.png'.format(info_name), format='png', dpi=300)
     f_spacing.savefig(
-        'figures/thermal_intensity-{}.png'.format(info_name), format='png')
+        'figures/thermal_intensity-{}.png'.format(info_name),
+        format='png', dpi=300)
 if plot_fig:
     plt.show()

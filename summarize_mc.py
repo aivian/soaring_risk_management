@@ -13,14 +13,17 @@ metadata = []
 for mc_file in save_files:
     if re.search('n=350', mc_file) and os.path.splitext(mc_file)[1] == '.p':
         print('opening: {}'.format(mc_file))
-        with open('MC_runs/{}'.format(mc_file), 'rb') as pfile:
-            save_data = cPickle.load(pfile)
-        this_metadata = (
-            mc_file,
-            save_data[0]['pilot']['P_landout_acceptable'],
-            save_data[0]['pilot']['gear_shifting'],
-            save_data[0]['thermal_field']._thermals[0].P_work)
-        metadata.append(this_metadata)
+        try:
+            with open('MC_runs/{}'.format(mc_file), 'rb') as pfile:
+                save_data = cPickle.load(pfile)
+            this_metadata = (
+                mc_file,
+                save_data[0]['pilot']['P_landout_acceptable'],
+                save_data[0]['pilot']['gear_shifting'],
+                save_data[0]['thermal_field']._thermals[0].P_work)
+            metadata.append(this_metadata)
+        except:
+            continue
 
 with open('mc_metadata.txt', 'w') as metadata_file:
     for entry in metadata:
